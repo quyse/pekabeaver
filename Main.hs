@@ -192,11 +192,14 @@ main = do
 						forM_ (gameStateActors state) $ \Actor
 							{ actorType = at
 							, actorPosition = position
+							, actorTarget = target
 							} -> do
 							let (vb, ib, ic, t) = case at of
 								Peka -> (vbPeka, ibPeka, icPeka, tPeka)
 								Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
-							renderUniform usObject uWorld $ affineTranslation position
+							--let world = affineLookAt (-position) (target) (Vec3 0 0 1)
+							let world = affineTranslation position
+							renderUniform usObject uWorld world
 							renderUploadUniformStorage usObject
 							renderUniformStorage usObject
 							renderVertexBuffer 0 vb
@@ -234,17 +237,12 @@ main = do
 							case event of
 								EventMouse (MouseDownEvent LeftMouseButton) -> do
 									(cursorX, cursorY) <- getMouseCursor inputFrame
-									putStrLn $ ppShow $ Vec3
-										((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
-										(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
-										0
 									let frontPoint = getFrontScreenPoint viewProj $ Vec3
 										((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
 										(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
 										0
-									let position = intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
-									putStrLn $ ppShow position
-									process =<< (spawnActor s Peka position $ Vec3 0 0 0)
+									let position = intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 5
+									process =<< (spawnActor s Beaver position $ Vec3 0 0 5)
 								EventMouse (RawMouseMoveEvent _dx _dy dz) -> process s
 									{ gameStateCameraDistance = max 100 $ min 1000 $ dz * 0.1 + gameStateCameraDistance s
 									}

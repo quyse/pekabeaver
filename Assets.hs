@@ -37,7 +37,7 @@ pekaGeometry :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -
 pekaGeometry = $(loadGeometry "assets/peka.DAE" "geom-peka")
 
 fieldTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
-fieldTexture = $(loadPngTextureExp "assets/0_lightTower.png")
+fieldTexture = $(loadPngTextureExp "assets/images/0_field.jpg")
 
 beaverTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
 beaverTexture = $(loadPngTextureExp "assets/images/0_beaver.jpg")
