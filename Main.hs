@@ -60,6 +60,17 @@ getFrontScreenPoint (Mat4x4
 intersectRay :: Fractional a => Vec3 a -> Vec3 a -> Vec3 a -> a -> Vec3 a
 intersectRay a d n nq = a + d * vecFromScalar ((nq - dot a n) / (dot d n))
 
+affineActorLookAt :: Floating a => Vec3 a -> Vec3 a -> Vec3 a -> Mat4x4 a
+affineActorLookAt position@(Vec3 px py pz) target direction = r where
+	y@(Vec3 yx yy yz) = normalize $ target - position
+	x@(Vec3 xx xy xz) = normalize $ cross direction y
+	Vec3 zx zy zz = cross y x
+	r = Mat4x4
+		xx yx zx px
+		xy yy zy py
+		xz yz zz pz
+		0 0 0 1
+
 main :: IO ()
 main = do
 	let
@@ -197,8 +208,8 @@ main = do
 							let (vb, ib, ic, t) = case at of
 								Peka -> (vbPeka, ibPeka, icPeka, tPeka)
 								Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
-							--let world = affineLookAt (-position) (target) (Vec3 0 0 1)
-							let world = affineTranslation position
+							let world = affineActorLookAt position target (Vec3 0 0 1)
+							--let world = affineTranslation position
 							renderUniform usObject uWorld world
 							renderUploadUniformStorage usObject
 							renderUniformStorage usObject
@@ -242,7 +253,7 @@ main = do
 										(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
 										0
 									let position = intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 5
-									process =<< (spawnActor s Beaver position $ Vec3 0 0 5)
+									process =<< (spawnActor s Peka position $ Vec3 0 0 5)
 								EventMouse (RawMouseMoveEvent _dx _dy dz) -> process s
 									{ gameStateCameraDistance = max 100 $ min 1000 $ dz * 0.1 + gameStateCameraDistance s
 									}
