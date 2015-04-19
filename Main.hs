@@ -67,7 +67,7 @@ actorOffset :: Float
 actorOffset = 5
 
 gunCoolDown :: Float
-gunCoolDown = 0.1
+gunCoolDown = 0.5
 
 actorDeadTime :: Float
 actorDeadTime = 5
@@ -76,7 +76,7 @@ actorExplodeTime :: Float
 actorExplodeTime = 0.5
 
 actorExplodeDistance :: Float
-actorExplodeDistance = 10
+actorExplodeDistance = 5
 
 livesAmount :: Int
 livesAmount = 100
@@ -324,7 +324,8 @@ main = do
 									ActorRunning -> translation
 									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 2 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
 									ActorExplode -> let k = t / tt in
-										mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ k * 1.5
+										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
+										mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
 								renderUniform usObject uWorld world
 								renderUploadUniformStorage usObject
 								renderUniformStorage usObject
@@ -411,7 +412,7 @@ main = do
 						right <- liftIO $ getKeyState inputFrame KeyRight
 						state $ \s -> ((), s
 							{ gsCameraAlpha = gsCameraAlpha s + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
-							, gsCameraBeta = max 0.5 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
+							, gsCameraBeta = max 0.1 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
 							})
 
 					-- step actors
@@ -514,7 +515,7 @@ main = do
 									, actorTime = 0
 									, actorTotalTime = actorExplodeTime
 									, actorStartPosition = startPosition
-									, actorFinishPosition = startPosition + normalize (startPosition - actorFinishPosition actor) * vecFromScalar actorExplodeDistance
+									, actorFinishPosition = startPosition + normalize (actorFinishPosition actor - startPosition) * vecFromScalar actorExplodeDistance
 									}
 							) actors
 						})
@@ -541,28 +542,6 @@ main = do
 								Nothing -> return ()
 						else return ()
 
-					-- TEST: process user's gun
-					do
-						s <- get
-						if gunStateTime (gsUserGun s) <= 0 then do
-							let minx = -fieldWidth
-							let maxx = fieldWidth
-							let at = gsUserActorType s
-							let cl = castleLine at
-							let miny = if cl > 0 then 0 else cl
-							let maxy = if cl > 0 then cl else 0
-							x <- liftIO $ getStdRandom $ randomR (minx, maxx)
-							y <- liftIO $ getStdRandom $ randomR (miny, maxy)
-							case spawnActor at (castlePosition at) (Vec2 x y) of
-								Just actor -> put s
-									{ gsActors = actor : gsActors s
-									, gsUserGun = (gsUserGun s)
-										{ gunStateTime = gunCoolDown
-										}
-									}
-								Nothing -> return ()
-						else return ()
-
 					-- process gun cooldowns
 					let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
 					state $ \s -> ((), s
@@ -577,8 +556,8 @@ main = do
 
 					-- update lives
 					get >>= \s -> liftIO $ do
-						js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
-						js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
+						js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
+						js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
 
 			-- main loop
 			liftIO $ runGame initialGameState $ \frameTime s -> execStateT (gameStep frameTime) s
