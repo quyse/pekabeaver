@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
 
+import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
@@ -13,6 +14,7 @@ import Flaw.Graphics.Sampler
 import Flaw.Math
 import Flaw.Math.Geometry
 import Flaw.Input
+import Flaw.Window
 
 import Assets
 
@@ -22,6 +24,7 @@ data GameState = GameState
 	, gameStateCameraDistance :: Float
 	, gameStateLightAngle :: Float
 	, gameStateActors :: [Actor]
+	, gameStateFirstCursor :: Maybe ((Int, Int), (Int, Int))
 	}
 
 data Actor = Actor
@@ -150,6 +153,7 @@ main = do
 				, gameStateCameraDistance = 200
 				, gameStateLightAngle = 0
 				, gameStateActors = []
+				, gameStateFirstCursor = Nothing
 				} $ \frameTime state@GameState
 				{ gameStateCameraAlpha = cameraAlpha
 				, gameStateCameraBeta = cameraBeta
@@ -240,24 +244,55 @@ main = do
 
 				-- process input
 				inputFrame <- nextInputFrame inputManager
+				let getMousePoint = do
+					(cursorX, cursorY) <- getMouseCursor inputFrame
+					let frontPoint = getFrontScreenPoint viewProj $ Vec3
+						((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
+						(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
+						0
+					return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
 				let process s = do
 					maybeEvent <- nextInputEvent inputFrame
 					case maybeEvent of
 						Just event -> do
 							--putStrLn $ show event
-							case event of
+							process =<< case event of
 								EventMouse (MouseDownEvent LeftMouseButton) -> do
+									cursor <- getMouseCursor inputFrame
+									return s
+										{ gameStateFirstCursor = Just (cursor, cursor)
+										}
+								EventMouse (MouseUpEvent LeftMouseButton) -> do
 									(cursorX, cursorY) <- getMouseCursor inputFrame
-									let frontPoint = getFrontScreenPoint viewProj $ Vec3
-										((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
-										(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
-										0
-									let position = intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 5
-									process =<< (spawnActor s Peka position $ Vec3 0 0 5)
-								EventMouse (RawMouseMoveEvent _dx _dy dz) -> process s
-									{ gameStateCameraDistance = max 100 $ min 1000 $ dz * 0.1 + gameStateCameraDistance s
+									case gameStateFirstCursor s of
+										Just ((firstCursorX, firstCursorY), _) -> do
+											ss <- do
+												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 then do
+													position <- getMousePoint
+													spawnActor s Peka position $ Vec3 0 0 5
+												else return s
+											return ss
+												{ gameStateFirstCursor = Nothing
+												}
+										Nothing -> return s
+								EventMouse (CursorMoveEvent cursorX cursorY) -> do
+									case gameStateFirstCursor s of
+										Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
+											if (abs $ cursorX - firstCursorX) >= 20 || (abs $ cursorY - firstCursorY) >= 20 then do
+												return s
+													{ gameStateCameraAlpha = gameStateCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
+													, gameStateCameraBeta = gameStateCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
+													, gameStateFirstCursor = Just (firstCursor, (cursorX, cursorY))
+													}
+											else
+												return s
+													{ gameStateFirstCursor = Just (firstCursor, (cursorX, cursorY))
+													}
+										Nothing -> return s
+								EventMouse (RawMouseMoveEvent _dx _dy dz) -> return s
+									{ gameStateCameraDistance = max 100 $ min 500 $ dz * (-0.1) + gameStateCameraDistance s
 									}
-								_ -> process s
+								_ -> return s
 						Nothing -> return s
 				newState <- process state
 
@@ -268,8 +303,8 @@ main = do
 					left <- getKeyState inputFrame KeyLeft
 					right <- getKeyState inputFrame KeyRight
 					return
-						( cameraAlpha + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
-						, max 0.5 $ min 1.5 $ cameraBeta + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
+						( gameStateCameraAlpha newState + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
+						, max 0.5 $ min 1.5 $ gameStateCameraBeta newState + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
 						)
 
 				-- step actors
