@@ -3,6 +3,7 @@
 import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad
+import Control.Monad.State
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource
 import Text.Show.Pretty(ppShow)
@@ -19,15 +20,15 @@ import Flaw.Window
 import Assets
 
 data GameState = GameState
-	{ gameStateCameraAlpha :: Float
-	, gameStateCameraBeta :: Float
-	, gameStateCameraDistance :: Float
-	, gameStateLightAngle :: Float
-	, gameStateActors :: [Actor]
-	, gameStateFirstCursor :: Maybe ((Int, Int), (Int, Int))
-	, gameStateUserActorType :: ActorType
-	, gameStateUserGun :: GunState
-	, gameStateComputerGun :: GunState
+	{ gsCameraAlpha :: Float
+	, gsCameraBeta :: Float
+	, gsCameraDistance :: Float
+	, gsLightAngle :: Float
+	, gsActors :: [Actor]
+	, gsFirstCursor :: Maybe ((Int, Int), (Int, Int))
+	, gsUserActorType :: ActorType
+	, gsUserGun :: GunState
+	, gsComputerGun :: GunState
 	} deriving Show
 
 data GunState = GunState
@@ -108,17 +109,17 @@ enemyActor at = case at of
 
 initialGameState :: GameState
 initialGameState = GameState
-	{ gameStateCameraAlpha = 0
-	, gameStateCameraBeta = 0
-	, gameStateCameraDistance = 200
-	, gameStateLightAngle = 0
-	, gameStateActors = []
-	, gameStateFirstCursor = Nothing
-	, gameStateUserActorType = Peka
-	, gameStateUserGun = GunState
+	{ gsCameraAlpha = 0
+	, gsCameraBeta = 0
+	, gsCameraDistance = 200
+	, gsLightAngle = 0
+	, gsActors = []
+	, gsFirstCursor = Nothing
+	, gsUserActorType = Peka
+	, gsUserGun = GunState
 		{ gunStateTime = 0
 		}
-	, gameStateComputerGun = GunState
+	, gsComputerGun = GunState
 		{ gunStateTime = 0
 		}
 	}
@@ -220,204 +221,216 @@ main = do
 					diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
 					colorTarget 0 $ combineVec (diffuseColor * vecFromScalar diffuse, constf 1)
 
-			-- main loop
-			liftIO $ runGame initialGameState $ \frameTime state@GameState
-				{ gameStateCameraAlpha = cameraAlpha
-				, gameStateCameraBeta = cameraBeta
-				, gameStateCameraDistance = cameraDistance
-				} -> do
+			let
+				gameStep :: Float -> StateT GameState IO ()
+				gameStep frameTime = do
 				-- check exit
 #if !defined(ghcjs_HOST_OS)
-				loop <- tryTakeMVar windowLoopVar
-				case loop of
-					Just True -> exitGame
-					_ -> return ()
+					loop <- tryTakeMVar windowLoopVar
+					case loop of
+						Just True -> liftIO $ exitGame
+						_ -> return ()
 #endif
 
-				let cameraPosition = Vec3 (cameraDistance * (cos cameraAlpha * cos cameraBeta)) (cameraDistance * (sin cameraAlpha * cos cameraBeta)) (cameraDistance * sin cameraBeta)
+					cameraPosition <- do
+						s <- get
+						let alpha = gsCameraAlpha s
+						let beta = gsCameraBeta s
+						let distance = gsCameraDistance s
+						return $ Vec3 (distance * (cos alpha * cos beta)) (distance * (sin alpha * cos beta)) (distance * sin beta)
 
-				(viewProj, viewportWidth, viewportHeight) <- render context $ do
-					present presenter $ do
-						renderClearColor 0 (Vec4 0.5 0.5 0.5 1)
-						renderClearDepth 1
-						renderProgram program
+					rs <- get
+					(viewProj, viewportWidth, viewportHeight) <- liftIO $ render context $ do
+						present presenter $ do
+							renderClearColor 0 (Vec4 0.5 0.5 0.5 1)
+							renderClearDepth 1
+							renderProgram program
 
-						(viewportWidth, viewportHeight) <- renderGetViewport
-						let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
+							(viewportWidth, viewportHeight) <- renderGetViewport
+							let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
 
-						let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
-						let proj = projectionPerspectiveFov (pi / 4) aspect 0.1 (1000 :: Float)
-						let viewProj = mul proj view
-						renderUniform usCamera uViewProj viewProj
-						renderUniform usCamera uCameraPosition cameraPosition
-						renderUploadUniformStorage usCamera
-						renderUniformStorage usCamera
+							let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
+							let proj = projectionPerspectiveFov (pi / 4) aspect 0.1 (1000 :: Float)
+							let viewProj = mul proj view
+							renderUniform usCamera uViewProj viewProj
+							renderUniform usCamera uCameraPosition cameraPosition
+							renderUploadUniformStorage usCamera
+							renderUniformStorage usCamera
 
-						renderUniform usLight uLightPosition $ let
-							angle = gameStateLightAngle state
-							in Vec3 (30 * cos angle) (30 * sin angle) 30
-						renderUploadUniformStorage usLight
-						renderUniformStorage usLight
+							renderUniform usLight uLightPosition $ let
+								angle = gsLightAngle rs
+								in Vec3 (30 * cos angle) (30 * sin angle) 30
+							renderUploadUniformStorage usLight
+							renderUniformStorage usLight
 
-						--renderUniform usMaterial uDiffuseColor $ Vec3 1 0 0
-						--renderUploadUniformStorage usMaterial
-						--renderUniformStorage usMaterial
+							--renderUniform usMaterial uDiffuseColor $ Vec3 1 0 0
+							--renderUploadUniformStorage usMaterial
+							--renderUniformStorage usMaterial
 
-						-- render field
-						renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Vec3f)
-						renderUploadUniformStorage usObject
-						renderUniformStorage usObject
-						renderVertexBuffer 0 vbField
-						renderIndexBuffer ibField
-						renderSampler 0 tField samplerState
-						renderDraw icField
-
-						-- render actors
-						forM_ (gameStateActors state) $ \actor@Actor
-							{ actorType = at
-							, actorFinishPosition = Vec2 fx fy
-							} -> do
-							let (vb, ib, ic, t) = case at of
-								Peka -> (vbPeka, ibPeka, icPeka, tPeka)
-								Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
-							let position = calcActorPosition actor
-							let world = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
-							--let world = affineTranslation position
-							renderUniform usObject uWorld world
+							-- render field
+							renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Vec3f)
 							renderUploadUniformStorage usObject
 							renderUniformStorage usObject
-							renderVertexBuffer 0 vb
-							renderIndexBuffer ib
-							renderSampler 0 t samplerState
-							renderDraw ic
+							renderVertexBuffer 0 vbField
+							renderIndexBuffer ibField
+							renderSampler 0 tField samplerState
+							renderDraw icField
 
-						return (viewProj, viewportWidth, viewportHeight)
+							-- render actors
+							forM_ (gsActors rs) $ \actor@Actor
+								{ actorType = at
+								, actorFinishPosition = Vec2 fx fy
+								} -> do
+								let (vb, ib, ic, t) = case at of
+									Peka -> (vbPeka, ibPeka, icPeka, tPeka)
+									Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
+								let position = calcActorPosition actor
+								let world = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
+								--let world = affineTranslation position
+								renderUniform usObject uWorld world
+								renderUploadUniformStorage usObject
+								renderUniformStorage usObject
+								renderVertexBuffer 0 vb
+								renderIndexBuffer ib
+								renderSampler 0 t samplerState
+								renderDraw ic
 
-				-- process input
-				inputFrame <- nextInputFrame inputManager
-				let getMousePoint = do
-					(cursorX, cursorY) <- getMouseCursor inputFrame
-					let frontPoint = getFrontScreenPoint viewProj $ Vec3
-						((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
-						(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
-						0
-					return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
-				let process s = do
-					maybeEvent <- nextInputEvent inputFrame
-					case maybeEvent of
-						Just event -> do
-							--putStrLn $ show event
-							process =<< case event of
-								EventMouse (MouseDownEvent LeftMouseButton) -> do
-									cursor <- getMouseCursor inputFrame
-									return s
-										{ gameStateFirstCursor = Just (cursor, cursor)
-										}
-								EventMouse (MouseUpEvent LeftMouseButton) -> do
-									(cursorX, cursorY) <- getMouseCursor inputFrame
-									case gameStateFirstCursor s of
-										Just ((firstCursorX, firstCursorY), _) -> do
-											ss <- do
-												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 && gunStateTime (gameStateUserGun s) <= 0 then do
+							return (viewProj, viewportWidth, viewportHeight)
+
+					-- process input
+					inputFrame <- liftIO $ nextInputFrame inputManager
+
+					let process = do
+						let getMousePoint = do
+							(cursorX, cursorY) <- liftIO $ getMouseCursor inputFrame
+							let frontPoint = getFrontScreenPoint viewProj $ Vec3
+								((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
+								(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
+								0
+							return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
+						maybeEvent <- liftIO $ nextInputEvent inputFrame
+						case maybeEvent of
+							Just event -> do
+								--putStrLn $ show event
+								case event of
+									EventMouse (MouseDownEvent LeftMouseButton) -> do
+										cursor <- liftIO $ getMouseCursor inputFrame
+										state $ \s -> ((), s
+											{ gsFirstCursor = Just (cursor, cursor)
+											})
+									EventMouse (MouseUpEvent LeftMouseButton) -> do
+										(cursorX, cursorY) <- liftIO $ getMouseCursor inputFrame
+										s1 <- get
+										case gsFirstCursor s1 of
+											Just ((firstCursorX, firstCursorY), _) -> do
+												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 && gunStateTime (gsUserGun s1) <= 0 then do
 													(Vec3 fx fy _) <- getMousePoint
-													let at = gameStateUserActorType s
+													let at = gsUserActorType s1
 													let startPosition = castlePosition at
 													let maybeActor = spawnActor at startPosition (Vec2 fx fy)
-													return $ case maybeActor of
-														Just actor -> s
-															{ gameStateActors = actor : gameStateActors s
-															, gameStateUserGun = (gameStateUserGun s)
-																{ gunStateTime = gunCoolDown
-																}
-															}
-														Nothing -> s
-												else return s
-											return ss
-												{ gameStateFirstCursor = Nothing
-												}
-										Nothing -> return s
-								EventMouse (CursorMoveEvent cursorX cursorY) -> do
-									case gameStateFirstCursor s of
-										Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
-											if (abs $ cursorX - firstCursorX) >= 20 || (abs $ cursorY - firstCursorY) >= 20 then do
-												return s
-													{ gameStateCameraAlpha = gameStateCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
-													, gameStateCameraBeta = gameStateCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
-													, gameStateFirstCursor = Just (firstCursor, (cursorX, cursorY))
-													}
-											else
-												return s
-													{ gameStateFirstCursor = Just (firstCursor, (cursorX, cursorY))
-													}
-										Nothing -> return s
-								EventMouse (RawMouseMoveEvent _dx _dy dz) -> return s
-									{ gameStateCameraDistance = max 100 $ min 500 $ dz * (-0.1) + gameStateCameraDistance s
-									}
-								_ -> return s
-						Nothing -> return s
-				newState <- process state
+													case maybeActor of
+														Just actor -> do
+															liftIO $ putStrLn (show actor)
+															state $ \s -> ((), s
+																{ gsActors = actor : gsActors s
+																, gsUserGun = (gsUserGun s)
+																	{ gunStateTime = gunCoolDown
+																	}
+																})
+														Nothing -> return ()
+												else return ()
+												state $ \s -> ((), s
+													{ gsFirstCursor = Nothing
+													})
+											Nothing -> return ()
+									EventMouse (CursorMoveEvent cursorX cursorY) -> do
+										s <- get
+										case gsFirstCursor s of
+											Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
+												if (abs $ cursorX - firstCursorX) >= 20 || (abs $ cursorY - firstCursorY) >= 20 then do
+													put $ s
+														{ gsCameraAlpha = gsCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
+														, gsCameraBeta = gsCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
+														, gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
+														}
+												else
+													put $ s
+														{ gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
+														}
+											Nothing -> return ()
+									EventMouse (RawMouseMoveEvent _dx _dy dz) -> state $ \s -> ((), s
+										{ gsCameraDistance = max 100 $ min 500 $ dz * (-0.1) + gsCameraDistance s
+										})
+									_ -> return ()
+								process
+							Nothing -> return ()
+					process
 
-				-- process camera rotation
-				(newCameraAlpha, newCameraBeta) <- do
-					up <- getKeyState inputFrame KeyUp
-					down <- getKeyState inputFrame KeyDown
-					left <- getKeyState inputFrame KeyLeft
-					right <- getKeyState inputFrame KeyRight
-					return
-						( gameStateCameraAlpha newState + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
-						, max 0.5 $ min 1.5 $ gameStateCameraBeta newState + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
-						)
+					-- process camera rotation
+					do
+						up <- liftIO $ getKeyState inputFrame KeyUp
+						down <- liftIO $ getKeyState inputFrame KeyDown
+						left <- liftIO $ getKeyState inputFrame KeyLeft
+						right <- liftIO $ getKeyState inputFrame KeyRight
+						state $ \s -> ((), s
+							{ gsCameraAlpha = gsCameraAlpha s + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
+							, gsCameraBeta = max 0.5 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
+							})
 
-				-- step actors
-				newActors <- liftM concat $ forM (gameStateActors newState) $ \actor@Actor
-					{ actorState = as
-					, actorFinishPosition = f
-					, actorType = at
-					, actorTime = t
-					, actorTotalTime = tt
-					} -> do
-					case as of
-						ActorFlying _ -> do
-							if t >= tt then do
-								let finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
-								return [actor
-									{ actorTime = 0
-									, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
-									, actorStartPosition = f
-									, actorFinishPosition = finishPosition
-									, actorState = ActorRunning
-									}]
-							else
-								return [actor
+					-- step actors
+					let stepActor actor@Actor
+						{ actorState = as
+						, actorFinishPosition = f
+						, actorType = at
+						, actorTime = t
+						, actorTotalTime = tt
+						} = case as of
+						ActorFlying _ -> if t >= tt then let
+							finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
+							in [actor
+								{ actorTime = 0
+								, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
+								, actorStartPosition = f
+								, actorFinishPosition = finishPosition
+								, actorState = ActorRunning
+								}]
+							else [actor
 									{ actorTime = t + frameTime
 									}]
-						ActorRunning -> do
-							if t >= tt then do
-								let finishPosition = castlePosition $ enemyActor at
-								let len = norm $ finishPosition - f
-								if len < 10 then return []
-								else return [actor
+						ActorRunning -> if t >= tt then
+							let
+								finishPosition = castlePosition $ enemyActor at
+								len = norm $ finishPosition - f
+							in
+								if len < 10 then []
+								else [actor
 									{ actorTime = 0
 									, actorTotalTime = len / actorGroundSpeed
 									, actorStartPosition = f
 									, actorFinishPosition = finishPosition
 									, actorState = ActorRunning
 									}]
-							else
-								return [actor
-									{ actorTime = t + frameTime
-									}]
+							else [actor
+								{ actorTime = t + frameTime
+								}]
 
-				-- process gun cooldowns
-				let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
-				let newState2 = newState
-					{ gameStateUserGun = processGun $ gameStateUserGun newState
-					, gameStateComputerGun = processGun $ gameStateComputerGun newState
-					}
+					state $ \s -> ((), s
+						{ gsActors = concat $ map stepActor $ gsActors s
+						})
 
-				return newState2
-					{ gameStateCameraAlpha = newCameraAlpha
-					, gameStateCameraBeta = newCameraBeta
-					, gameStateLightAngle = gameStateLightAngle newState2 + frameTime * 3
-					, gameStateActors = newActors
-					}
+					get >>= (liftIO . putStrLn . show)
+
+					-- process gun cooldowns
+					let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
+					state $ \s -> ((), s
+						{ gsUserGun = processGun $ gsUserGun s
+						, gsComputerGun = processGun $ gsComputerGun s
+						})
+
+					-- step light
+					state $ \s -> ((), s
+						{ gsLightAngle = gsLightAngle s + frameTime * 3
+						})
+
+			-- main loop
+			liftIO $ runGame initialGameState $ \frameTime s -> execStateT (gameStep frameTime) s
