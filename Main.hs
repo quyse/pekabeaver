@@ -25,16 +25,103 @@ data GameState = GameState
 	, gameStateLightAngle :: Float
 	, gameStateActors :: [Actor]
 	, gameStateFirstCursor :: Maybe ((Int, Int), (Int, Int))
-	}
+	, gameStateUserActorType :: ActorType
+	, gameStateUserGun :: GunState
+	, gameStateComputerGun :: GunState
+	} deriving Show
+
+data GunState = GunState
+	{ gunStateTime :: Float
+	} deriving Show
 
 data Actor = Actor
 	{ actorType :: ActorType
-	, actorPosition :: !Vec3f
-	, actorTarget :: !Vec3f
+	, actorStartPosition :: !Vec2f
+	, actorFinishPosition :: !Vec2f
+	, actorTime :: Float
+	, actorTotalTime :: Float
+	, actorState :: ActorState
 	, actorAngle :: Float
-	}
+	} deriving Show
 
-data ActorType = Peka | Beaver
+data ActorType = Peka | Beaver deriving Show
+
+actorFlySpeed :: Float
+actorFlySpeed = 100
+
+actorGroundSpeed :: Float
+actorGroundSpeed = 50
+
+gravity :: Float
+gravity = 50
+
+actorOffset :: Float
+actorOffset = 5
+
+gunCoolDown :: Float
+gunCoolDown = 1
+
+data ActorState = ActorFlying Float | ActorRunning deriving Show
+
+calcActorPosition :: Actor -> Vec3f
+calcActorPosition Actor
+	{ actorStartPosition = Vec2 sx sy
+	, actorFinishPosition = Vec2 fx fy
+	, actorTime = t
+	, actorTotalTime = tt
+	, actorState = as
+	} = case as of
+	ActorFlying angle -> Vec3 (sx * (1 - k) + fx * k) (sy * (1 - k) + fy * k) z where
+		k = t / tt
+		z = actorOffset + actorFlySpeed * (sin angle) * t - gravity * t * t / 2
+	ActorRunning -> Vec3 (sx * (1 - k) + fx * k) (sy * (1 - k) + fy * k) actorOffset where
+		k = t / tt
+
+spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
+spawnActor at s f = maybeActor where
+	sin2angle = (norm $ s - f) * gravity / (actorFlySpeed * actorFlySpeed)
+	angle = 0.5 * (pi - asin sin2angle)
+	maybeActor = if sin2angle >= 1 then Nothing else Just Actor
+		{ actorType = at
+		, actorStartPosition = s
+		, actorFinishPosition = f
+		, actorTime = 0
+		, actorTotalTime = 2 * actorFlySpeed * (sin angle) / gravity
+		, actorState = ActorFlying angle
+		, actorAngle = 0
+		}
+
+castlePosition :: ActorType -> Vec2f
+castlePosition at = case at of
+	Peka -> Vec2 0 200
+	Beaver -> Vec2 0 (-200)
+
+castleLine :: ActorType -> Float
+castleLine at = case at of
+	Peka -> 150
+	Beaver -> -150
+
+enemyActor :: ActorType -> ActorType
+enemyActor at = case at of
+	Peka -> Beaver
+	Beaver -> Peka
+
+initialGameState :: GameState
+initialGameState = GameState
+	{ gameStateCameraAlpha = 0
+	, gameStateCameraBeta = 0
+	, gameStateCameraDistance = 200
+	, gameStateLightAngle = 0
+	, gameStateActors = []
+	, gameStateFirstCursor = Nothing
+	, gameStateUserActorType = Peka
+	, gameStateUserGun = GunState
+		{ gunStateTime = 0
+		}
+	, gameStateComputerGun = GunState
+		{ gunStateTime = 0
+		}
+	}
 
 getFrontScreenPoint :: Fractional a => Mat4x4 a -> Vec3 a -> Vec3 a
 getFrontScreenPoint (Mat4x4
@@ -66,8 +153,8 @@ intersectRay a d n nq = a + d * vecFromScalar ((nq - dot a n) / (dot d n))
 affineActorLookAt :: Floating a => Vec3 a -> Vec3 a -> Vec3 a -> Mat4x4 a
 affineActorLookAt position@(Vec3 px py pz) target direction = r where
 	y@(Vec3 yx yy yz) = normalize $ target - position
-	x@(Vec3 xx xy xz) = normalize $ cross direction y
-	Vec3 zx zy zz = cross y x
+	x@(Vec3 xx xy xz) = normalize $ cross y direction
+	Vec3 zx zy zz = cross x y
 	r = Mat4x4
 		xx yx zx px
 		xy yy zy py
@@ -106,19 +193,6 @@ main = do
 
 			(_, samplerState) <- createSamplerState device defaultSamplerStateInfo
 
-			let spawnActor state at position target = do
-				--let position = case at of
-				--	Peka -> Vec3 0 500 10
-				--	Beaver -> Vec3 0 (-500) 10
-				return state
-					{ gameStateActors = Actor
-						{ actorType = at
-						, actorPosition = position
-						, actorTarget = target
-						, actorAngle = 0
-						} : gameStateActors state
-					}
-
 			-- program
 			ubsCamera <- liftIO $ uniformBufferSlot 0
 			uViewProj <- liftIO $ uniform ubsCamera
@@ -142,19 +216,12 @@ main = do
 				rasterize (mul uViewProj worldPosition) $ do
 					let toLight = normalize $ (xyz__ worldPosition) - uLightPosition
 					--diffuse <- temp $ max_ 0 $ dot toLight $ xyz__ worldNormal
-					diffuse <- temp $ abs $ dot toLight $ xyz__ worldNormal
+					diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ xyz__ worldNormal)
 					diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
 					colorTarget 0 $ combineVec (diffuseColor * vecFromScalar diffuse, constf 1)
 
 			-- main loop
-			liftIO $ runGame GameState
-				{ gameStateCameraAlpha = 0
-				, gameStateCameraBeta = 0
-				, gameStateCameraDistance = 200
-				, gameStateLightAngle = 0
-				, gameStateActors = []
-				, gameStateFirstCursor = Nothing
-				} $ \frameTime state@GameState
+			liftIO $ runGame initialGameState $ \frameTime state@GameState
 				{ gameStateCameraAlpha = cameraAlpha
 				, gameStateCameraBeta = cameraBeta
 				, gameStateCameraDistance = cameraDistance
@@ -186,7 +253,9 @@ main = do
 						renderUploadUniformStorage usCamera
 						renderUniformStorage usCamera
 
-						renderUniform usLight uLightPosition $ Vec3 30 30 100
+						renderUniform usLight uLightPosition $ let
+							angle = gameStateLightAngle state
+							in Vec3 (30 * cos angle) (30 * sin angle) 30
 						renderUploadUniformStorage usLight
 						renderUniformStorage usLight
 
@@ -204,15 +273,15 @@ main = do
 						renderDraw icField
 
 						-- render actors
-						forM_ (gameStateActors state) $ \Actor
+						forM_ (gameStateActors state) $ \actor@Actor
 							{ actorType = at
-							, actorPosition = position
-							, actorTarget = target
+							, actorFinishPosition = Vec2 fx fy
 							} -> do
 							let (vb, ib, ic, t) = case at of
 								Peka -> (vbPeka, ibPeka, icPeka, tPeka)
 								Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
-							let world = affineActorLookAt position target (Vec3 0 0 1)
+							let position = calcActorPosition actor
+							let world = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
 							--let world = affineTranslation position
 							renderUniform usObject uWorld world
 							renderUploadUniformStorage usObject
@@ -221,24 +290,6 @@ main = do
 							renderIndexBuffer ib
 							renderSampler 0 t samplerState
 							renderDraw ic
-
-						-- render test beaver
-						renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 1) :: Vec3f)
-						renderUploadUniformStorage usObject
-						renderUniformStorage usObject
-						renderVertexBuffer 0 vbBeaver
-						renderIndexBuffer ibBeaver
-						renderSampler 0 tBeaver samplerState
-						renderDraw icBeaver
-
-						-- render test peka
-						renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 1) :: Vec3f)
-						renderUploadUniformStorage usObject
-						renderUniformStorage usObject
-						renderVertexBuffer 0 vbPeka
-						renderIndexBuffer ibPeka
-						renderSampler 0 tPeka samplerState
-						renderDraw icPeka
 
 						return (viewProj, viewportWidth, viewportHeight)
 
@@ -267,9 +318,19 @@ main = do
 									case gameStateFirstCursor s of
 										Just ((firstCursorX, firstCursorY), _) -> do
 											ss <- do
-												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 then do
-													position <- getMousePoint
-													spawnActor s Peka position $ Vec3 0 0 5
+												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 && gunStateTime (gameStateUserGun s) <= 0 then do
+													(Vec3 fx fy _) <- getMousePoint
+													let at = gameStateUserActorType s
+													let startPosition = castlePosition at
+													let maybeActor = spawnActor at startPosition (Vec2 fx fy)
+													return $ case maybeActor of
+														Just actor -> s
+															{ gameStateActors = actor : gameStateActors s
+															, gameStateUserGun = (gameStateUserGun s)
+																{ gunStateTime = gunCoolDown
+																}
+															}
+														Nothing -> s
 												else return s
 											return ss
 												{ gameStateFirstCursor = Nothing
@@ -308,18 +369,55 @@ main = do
 						)
 
 				-- step actors
-				newActors <- forM (gameStateActors newState) $ \actor@Actor
-					{ actorPosition = position
-					, actorTarget = target
+				newActors <- liftM concat $ forM (gameStateActors newState) $ \actor@Actor
+					{ actorState = as
+					, actorFinishPosition = f
+					, actorType = at
+					, actorTime = t
+					, actorTotalTime = tt
 					} -> do
-					let newPosition = position + (vecFromScalar 1) * normalize (target - position)
-					return actor
-						{ actorPosition = newPosition
-						}
+					case as of
+						ActorFlying _ -> do
+							if t >= tt then do
+								let finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
+								return [actor
+									{ actorTime = 0
+									, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
+									, actorStartPosition = f
+									, actorFinishPosition = finishPosition
+									, actorState = ActorRunning
+									}]
+							else
+								return [actor
+									{ actorTime = t + frameTime
+									}]
+						ActorRunning -> do
+							if t >= tt then do
+								let finishPosition = castlePosition $ enemyActor at
+								let len = norm $ finishPosition - f
+								if len < 10 then return []
+								else return [actor
+									{ actorTime = 0
+									, actorTotalTime = len / actorGroundSpeed
+									, actorStartPosition = f
+									, actorFinishPosition = finishPosition
+									, actorState = ActorRunning
+									}]
+							else
+								return [actor
+									{ actorTime = t + frameTime
+									}]
 
-				return newState
+				-- process gun cooldowns
+				let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
+				let newState2 = newState
+					{ gameStateUserGun = processGun $ gameStateUserGun newState
+					, gameStateComputerGun = processGun $ gameStateComputerGun newState
+					}
+
+				return newState2
 					{ gameStateCameraAlpha = newCameraAlpha
 					, gameStateCameraBeta = newCameraBeta
-					, gameStateLightAngle = gameStateLightAngle newState + frameTime
+					, gameStateLightAngle = gameStateLightAngle newState2 + frameTime * 3
 					, gameStateActors = newActors
 					}
