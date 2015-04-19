@@ -6,6 +6,10 @@ import Control.Monad
 import Control.Monad.State
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource
+import qualified Data.Text as T
+import GHCJS.Types
+import GHCJS.Foreign
+import System.Random
 import Text.Show.Pretty(ppShow)
 
 import Flaw.Game
@@ -29,6 +33,9 @@ data GameState = GameState
 	, gsUserActorType :: ActorType
 	, gsUserGun :: GunState
 	, gsComputerGun :: GunState
+	, gsDamages :: [Damage]
+	, gsBeaverLives :: Int
+	, gsPekaLives :: Int
 	} deriving Show
 
 data GunState = GunState
@@ -45,24 +52,36 @@ data Actor = Actor
 	, actorAngle :: Float
 	} deriving Show
 
-data ActorType = Peka | Beaver deriving Show
+data ActorType = Peka | Beaver deriving (Eq, Show)
 
 actorFlySpeed :: Float
-actorFlySpeed = 100
+actorFlySpeed = 200
 
 actorGroundSpeed :: Float
 actorGroundSpeed = 50
 
 gravity :: Float
-gravity = 50
+gravity = 180
 
 actorOffset :: Float
 actorOffset = 5
 
 gunCoolDown :: Float
-gunCoolDown = 1
+gunCoolDown = 0.1
 
-data ActorState = ActorFlying Float | ActorRunning deriving Show
+actorDeadTime :: Float
+actorDeadTime = 5
+
+actorExplodeTime :: Float
+actorExplodeTime = 0.5
+
+actorExplodeDistance :: Float
+actorExplodeDistance = 10
+
+livesAmount :: Int
+livesAmount = 100
+
+data ActorState = ActorFlying Float | ActorRunning | ActorDead | ActorExplode deriving (Eq, Show)
 
 calcActorPosition :: Actor -> Vec3f
 calcActorPosition Actor
@@ -76,6 +95,9 @@ calcActorPosition Actor
 		k = t / tt
 		z = actorOffset + actorFlySpeed * (sin angle) * t - gravity * t * t / 2
 	ActorRunning -> Vec3 (sx * (1 - k) + fx * k) (sy * (1 - k) + fy * k) actorOffset where
+		k = t / tt
+	ActorDead -> Vec3 sx sy actorOffset
+	ActorExplode -> Vec3 (sx * (1 - k) + fx * k) (sy * (1 - k) + fy * k) actorOffset where
 		k = t / tt
 
 spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
@@ -102,10 +124,15 @@ castleLine at = case at of
 	Peka -> 150
 	Beaver -> -150
 
+fieldWidth :: Float
+fieldWidth = 100
+
 enemyActor :: ActorType -> ActorType
 enemyActor at = case at of
 	Peka -> Beaver
 	Beaver -> Peka
+
+data Damage = Damage ActorType Vec2f deriving Show
 
 initialGameState :: GameState
 initialGameState = GameState
@@ -122,6 +149,9 @@ initialGameState = GameState
 	, gsComputerGun = GunState
 		{ gunStateTime = 0
 		}
+	, gsDamages = []
+	, gsBeaverLives = livesAmount
+	, gsPekaLives = livesAmount
 	}
 
 getFrontScreenPoint :: Fractional a => Mat4x4 a -> Vec3 a -> Vec3 a
@@ -217,7 +247,7 @@ main = do
 				rasterize (mul uViewProj worldPosition) $ do
 					let toLight = normalize $ (xyz__ worldPosition) - uLightPosition
 					--diffuse <- temp $ max_ 0 $ dot toLight $ xyz__ worldNormal
-					diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ xyz__ worldNormal)
+					diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ normalize $ xyz__ worldNormal)
 					diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
 					colorTarget 0 $ combineVec (diffuseColor * vecFromScalar diffuse, constf 1)
 
@@ -279,20 +309,28 @@ main = do
 							-- render actors
 							forM_ (gsActors rs) $ \actor@Actor
 								{ actorType = at
+								, actorState = as
 								, actorFinishPosition = Vec2 fx fy
+								, actorTime = t
+								, actorTotalTime = tt
 								} -> do
-								let (vb, ib, ic, t) = case at of
+								let (vb, ib, ic, tex) = case at of
 									Peka -> (vbPeka, ibPeka, icPeka, tPeka)
 									Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
 								let position = calcActorPosition actor
-								let world = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
-								--let world = affineTranslation position
+								let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
+								let world = case as of
+									ActorFlying _ -> translation
+									ActorRunning -> translation
+									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 2 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
+									ActorExplode -> let k = t / tt in
+										mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ k * 1.5
 								renderUniform usObject uWorld world
 								renderUploadUniformStorage usObject
 								renderUniformStorage usObject
 								renderVertexBuffer 0 vb
 								renderIndexBuffer ib
-								renderSampler 0 t samplerState
+								renderSampler 0 tex samplerState
 								renderDraw ic
 
 							return (viewProj, viewportWidth, viewportHeight)
@@ -326,8 +364,7 @@ main = do
 												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 && gunStateTime (gsUserGun s1) <= 0 then do
 													(Vec3 fx fy _) <- getMousePoint
 													let at = gsUserActorType s1
-													let startPosition = castlePosition at
-													let maybeActor = spawnActor at startPosition (Vec2 fx fy)
+													let maybeActor = spawnActor at (castlePosition at) (Vec2 fx fy)
 													case maybeActor of
 														Just actor -> do
 															liftIO $ putStrLn (show actor)
@@ -384,41 +421,147 @@ main = do
 						, actorType = at
 						, actorTime = t
 						, actorTotalTime = tt
-						} = case as of
-						ActorFlying _ -> if t >= tt then let
-							finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
-							in [actor
-								{ actorTime = 0
-								, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
-								, actorStartPosition = f
-								, actorFinishPosition = finishPosition
-								, actorState = ActorRunning
-								}]
-							else [actor
-									{ actorTime = t + frameTime
-									}]
-						ActorRunning -> if t >= tt then
-							let
-								finishPosition = castlePosition $ enemyActor at
-								len = norm $ finishPosition - f
-							in
-								if len < 10 then []
-								else [actor
+						} = do
+						case as of
+							ActorFlying _ -> if t >= tt then do
+								let finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
+								state $ \s -> ((), s
+									{ gsDamages = (Damage at f) : gsDamages s
+									})
+								return [actor
 									{ actorTime = 0
-									, actorTotalTime = len / actorGroundSpeed
+									, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
 									, actorStartPosition = f
 									, actorFinishPosition = finishPosition
 									, actorState = ActorRunning
 									}]
-							else [actor
-								{ actorTime = t + frameTime
-								}]
+								else return [actor
+										{ actorTime = t + frameTime
+										}]
+							ActorRunning -> do
+								if t >= tt then do
+									let finishPosition = castlePosition $ enemyActor at
+									let len = norm $ finishPosition - f
+									if len < 10 then do
+										state $ \s -> ((), case at of
+											Beaver -> s { gsPekaLives = gsPekaLives s - 1 }
+											Peka -> s { gsBeaverLives = gsBeaverLives s - 1 }
+											)
+										return []
+									else return [actor
+										{ actorTime = 0
+										, actorTotalTime = len / actorGroundSpeed
+										, actorStartPosition = f
+										, actorFinishPosition = finishPosition
+										, actorState = ActorRunning
+										}]
+								else return [actor
+									{ actorTime = t + frameTime
+									}]
+							ActorDead -> do
+								if t >= tt then return []
+								else return [actor
+									{ actorTime = t + frameTime
+									}]
+							ActorExplode -> do
+								if t >= tt then return []
+								else return [actor
+									{ actorTime = t + frameTime
+									}]
 
-					state $ \s -> ((), s
-						{ gsActors = concat $ map stepActor $ gsActors s
+					do
+						s1 <- get
+						newActors <- liftM concat $ mapM stepActor $ gsActors s1
+						state $ \s -> ((), s
+							{ gsActors = newActors
+							})
+
+					-- apply damages
+					do
+						s <- get
+						let applyDamages (Damage eat ep) actors = map (\actor@Actor
+							{ actorType = at
+							, actorState = as
+							} -> let
+								Vec3 px py _pz = calcActorPosition actor
+								in
+									if at == eat || as == ActorDead || norm (ep - (Vec2 px py)) > 20 then actor
+									else actor
+										{ actorState = ActorDead
+										, actorTime = 0
+										, actorTotalTime = actorDeadTime
+										, actorStartPosition = Vec2 px py
+										}) actors
+						put s
+							{ gsActors = foldr applyDamages (gsActors s) $ gsDamages s
+							, gsDamages = []
+							}
+
+					-- annigilate ground actors
+					state $ \s -> let actors = gsActors s in ((), s
+						{ gsActors = map (\actor -> let
+							p@(Vec3 px py _pz) = calcActorPosition actor
+							at = actorType actor
+							keep = actorState actor /= ActorRunning || all (\actor2 -> let
+								p2 = calcActorPosition actor2
+								at2 = actorType actor2
+								as2 = actorState actor2
+								in at == at2 || as2 /= ActorRunning || norm (p - p2) > 10
+								) actors
+							in if keep then actor
+								else let startPosition = Vec2 px py in actor
+									{ actorState = ActorExplode
+									, actorTime = 0
+									, actorTotalTime = actorExplodeTime
+									, actorStartPosition = startPosition
+									, actorFinishPosition = startPosition + normalize (startPosition - actorFinishPosition actor) * vecFromScalar actorExplodeDistance
+									}
+							) actors
 						})
 
-					get >>= (liftIO . putStrLn . show)
+					-- process computer's gun
+					do
+						s <- get
+						if gunStateTime (gsComputerGun s) <= 0 then do
+							let minx = -fieldWidth
+							let maxx = fieldWidth
+							let at = enemyActor $ gsUserActorType s
+							let cl = castleLine at
+							let miny = if cl > 0 then 0 else cl
+							let maxy = if cl > 0 then cl else 0
+							x <- liftIO $ getStdRandom $ randomR (minx, maxx)
+							y <- liftIO $ getStdRandom $ randomR (miny, maxy)
+							case spawnActor at (castlePosition at) (Vec2 x y) of
+								Just actor -> put s
+									{ gsActors = actor : gsActors s
+									, gsComputerGun = (gsComputerGun s)
+										{ gunStateTime = gunCoolDown
+										}
+									}
+								Nothing -> return ()
+						else return ()
+
+					-- TEST: process user's gun
+					do
+						s <- get
+						if gunStateTime (gsUserGun s) <= 0 then do
+							let minx = -fieldWidth
+							let maxx = fieldWidth
+							let at = gsUserActorType s
+							let cl = castleLine at
+							let miny = if cl > 0 then 0 else cl
+							let maxy = if cl > 0 then cl else 0
+							x <- liftIO $ getStdRandom $ randomR (minx, maxx)
+							y <- liftIO $ getStdRandom $ randomR (miny, maxy)
+							case spawnActor at (castlePosition at) (Vec2 x y) of
+								Just actor -> put s
+									{ gsActors = actor : gsActors s
+									, gsUserGun = (gsUserGun s)
+										{ gunStateTime = gunCoolDown
+										}
+									}
+								Nothing -> return ()
+						else return ()
 
 					-- process gun cooldowns
 					let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
@@ -432,5 +575,12 @@ main = do
 						{ gsLightAngle = gsLightAngle s + frameTime * 3
 						})
 
+					-- update lives
+					get >>= \s -> liftIO $ do
+						js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
+						js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
+
 			-- main loop
 			liftIO $ runGame initialGameState $ \frameTime s -> execStateT (gameStep frameTime) s
+
+foreign import javascript unsafe "document.getElementById($1).style.width=$2" js_setStyleWidth :: JSString -> JSString -> IO ()
