@@ -1,0 +1,39 @@
+body {
+	user-select: none;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	cursor: default;
+}
+
+.progress {
+	border: 1px solid black;
+	position: absolute;
+	width: 200px;
+	height: 32px;
+	z-index: 1;
+}
+
+.progress > .bar {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+}
+
+.progress > img {
+	position: absolute;
+	top: 1px;
+}
+.progress.beaver > .bar {
+	background-color: #c64f00;
+	left: 0;
+}
+.progress.beaver > img {
+	left: 0;
+}
+.progress.peka > .bar {
+	background-color: #fdda58;
+	right: 0;
+}
+.progress.peka > img {
+	right: 0;
+}
