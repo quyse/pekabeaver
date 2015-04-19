@@ -317,13 +317,14 @@ main = do
 								let (vb, ib, ic, tex) = case at of
 									Peka -> (vbPeka, ibPeka, icPeka, tPeka)
 									Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
+								let k = t / tt
 								let position = calcActorPosition actor
 								let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
 								let world = case as of
-									ActorFlying _ -> translation
+									ActorFlying _ -> mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
 									ActorRunning -> translation
 									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 2 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
-									ActorExplode -> let k = t / tt in
+									ActorExplode ->
 										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
 										mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
 								renderUniform usObject uWorld world
