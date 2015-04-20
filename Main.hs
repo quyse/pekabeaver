@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE CPP, FlexibleContexts, JavaScriptFFI, OverloadedStrings #-}
 
 import Control.Concurrent.MVar
 import Control.Exception
@@ -24,7 +24,8 @@ import Flaw.Window
 import Assets
 
 data GameState = GameState
-	{ gsCameraAlpha :: Float
+	{ gsPhase :: GamePhase
+	, gsCameraAlpha :: Float
 	, gsCameraBeta :: Float
 	, gsCameraDistance :: Float
 	, gsLightAngle :: Float
@@ -36,7 +37,10 @@ data GameState = GameState
 	, gsDamages :: [Damage]
 	, gsBeaverLives :: Int
 	, gsPekaLives :: Int
+	, gsUserSpawn :: Maybe Vec2f
 	} deriving Show
+
+data GamePhase = GameBattle | GameFinish deriving (Eq, Show)
 
 data GunState = GunState
 	{ gunStateTime :: Float
@@ -60,6 +64,9 @@ actorFlySpeed = 200
 actorGroundSpeed :: Float
 actorGroundSpeed = 50
 
+actorAngleSpeed :: Float
+actorAngleSpeed = actorGroundSpeed / actorOffset
+
 gravity :: Float
 gravity = 180
 
@@ -78,10 +85,22 @@ actorExplodeTime = 0.5
 actorExplodeDistance :: Float
 actorExplodeDistance = 5
 
-livesAmount :: Int
-livesAmount = 100
+actorWinningOffset :: Float
+actorWinningOffset = 50
 
-data ActorState = ActorFlying Float | ActorRunning | ActorDead | ActorExplode deriving (Eq, Show)
+actorWinningScale :: Float
+actorWinningScale = 5
+
+actorWinningTime :: Float
+actorWinningTime = 1
+
+livesAmount :: Int
+livesAmount = 20
+
+moveClickThreshold :: Num a => a
+moveClickThreshold = 50
+
+data ActorState = ActorFlying Float | ActorRunning | ActorDead | ActorExplode | ActorWinning deriving (Eq, Show)
 
 calcActorPosition :: Actor -> Vec3f
 calcActorPosition Actor
@@ -99,6 +118,7 @@ calcActorPosition Actor
 	ActorDead -> Vec3 sx sy actorOffset
 	ActorExplode -> Vec3 (sx * (1 - k) + fx * k) (sy * (1 - k) + fy * k) actorOffset where
 		k = t / tt
+	ActorWinning -> Vec3 sx sy actorOffset
 
 spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
 spawnActor at s f = maybeActor where
@@ -136,9 +156,10 @@ data Damage = Damage ActorType Vec2f deriving Show
 
 initialGameState :: GameState
 initialGameState = GameState
-	{ gsCameraAlpha = 0
-	, gsCameraBeta = 0
-	, gsCameraDistance = 200
+	{ gsPhase = GameBattle
+	, gsCameraAlpha = 0
+	, gsCameraBeta = 0.35
+	, gsCameraDistance = 400
 	, gsLightAngle = 0
 	, gsActors = []
 	, gsFirstCursor = Nothing
@@ -152,6 +173,7 @@ initialGameState = GameState
 	, gsDamages = []
 	, gsBeaverLives = livesAmount
 	, gsPekaLives = livesAmount
+	, gsUserSpawn = Nothing
 	}
 
 getFrontScreenPoint :: Fractional a => Mat4x4 a -> Vec3 a -> Vec3 a
@@ -313,6 +335,7 @@ main = do
 								, actorFinishPosition = Vec2 fx fy
 								, actorTime = t
 								, actorTotalTime = tt
+								, actorAngle = aa
 								} -> do
 								let (vb, ib, ic, tex) = case at of
 									Peka -> (vbPeka, ibPeka, icPeka, tPeka)
@@ -322,11 +345,12 @@ main = do
 								let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
 								let world = case as of
 									ActorFlying _ -> mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
-									ActorRunning -> translation
+									ActorRunning -> if at == Peka then mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
 									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 2 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
 									ActorExplode ->
 										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
 										mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
+									ActorWinning -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * actorWinningOffset) $ affineScaling $ vecFromScalar $ 1 - k + actorWinningScale * k
 								renderUniform usObject uWorld world
 								renderUploadUniformStorage usObject
 								renderUniformStorage usObject
@@ -363,20 +387,11 @@ main = do
 										s1 <- get
 										case gsFirstCursor s1 of
 											Just ((firstCursorX, firstCursorY), _) -> do
-												if (abs $ cursorX - firstCursorX) < 20 && (abs $ cursorY - firstCursorY) < 20 && gunStateTime (gsUserGun s1) <= 0 then do
+												if (abs $ cursorX - firstCursorX) < moveClickThreshold && (abs $ cursorY - firstCursorY) < moveClickThreshold then do
 													(Vec3 fx fy _) <- getMousePoint
-													let at = gsUserActorType s1
-													let maybeActor = spawnActor at (castlePosition at) (Vec2 fx fy)
-													case maybeActor of
-														Just actor -> do
-															liftIO $ putStrLn (show actor)
-															state $ \s -> ((), s
-																{ gsActors = actor : gsActors s
-																, gsUserGun = (gsUserGun s)
-																	{ gunStateTime = gunCoolDown
-																	}
-																})
-														Nothing -> return ()
+													state $ \s -> ((), s
+														{ gsUserSpawn = Just $ Vec2 fx fy
+														})
 												else return ()
 												state $ \s -> ((), s
 													{ gsFirstCursor = Nothing
@@ -386,7 +401,7 @@ main = do
 										s <- get
 										case gsFirstCursor s of
 											Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
-												if (abs $ cursorX - firstCursorX) >= 20 || (abs $ cursorY - firstCursorY) >= 20 then do
+												if (abs $ cursorX - firstCursorX) >= moveClickThreshold || (abs $ cursorY - firstCursorY) >= moveClickThreshold then do
 													put $ s
 														{ gsCameraAlpha = gsCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
 														, gsCameraBeta = gsCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
@@ -436,6 +451,7 @@ main = do
 									, actorStartPosition = f
 									, actorFinishPosition = finishPosition
 									, actorState = ActorRunning
+									, actorAngle = 0
 									}]
 								else return [actor
 										{ actorTime = t + frameTime
@@ -449,16 +465,24 @@ main = do
 											Beaver -> s { gsPekaLives = gsPekaLives s - 1 }
 											Peka -> s { gsBeaverLives = gsBeaverLives s - 1 }
 											)
-										return []
+										return [actor
+											{ actorTime = 0
+											, actorTotalTime = actorWinningTime
+											, actorState = ActorWinning
+											, actorStartPosition = finishPosition
+											, actorFinishPosition = finishPosition
+											}]
 									else return [actor
 										{ actorTime = 0
 										, actorTotalTime = len / actorGroundSpeed
 										, actorStartPosition = f
 										, actorFinishPosition = finishPosition
 										, actorState = ActorRunning
+										, actorAngle = 0
 										}]
 								else return [actor
 									{ actorTime = t + frameTime
+									, actorAngle = actorAngle actor + actorAngleSpeed * frameTime
 									}]
 							ActorDead -> do
 								if t >= tt then return []
@@ -466,6 +490,11 @@ main = do
 									{ actorTime = t + frameTime
 									}]
 							ActorExplode -> do
+								if t >= tt then return []
+								else return [actor
+									{ actorTime = t + frameTime
+									}]
+							ActorWinning -> do
 								if t >= tt then return []
 								else return [actor
 									{ actorTime = t + frameTime
@@ -521,10 +550,31 @@ main = do
 							) actors
 						})
 
+					-- process user's gun
+					do
+						s1 <- get
+						if gsPhase s1 == GameBattle && gunStateTime (gsUserGun s1) <= 0 then do
+							case gsUserSpawn s1 of
+								Just position -> do
+									let at = gsUserActorType s1
+									case spawnActor at (castlePosition at) position of
+										Just actor -> state $ \s -> ((), s
+											{ gsActors = actor : gsActors s
+											, gsUserGun = (gsUserGun s)
+												{ gunStateTime = gunCoolDown
+												}
+											})
+										Nothing -> return ()
+									state $ \s -> ((), s
+										{ gsUserSpawn = Nothing
+										})
+								Nothing -> return ()
+						else return ()
+
 					-- process computer's gun
 					do
 						s <- get
-						if gunStateTime (gsComputerGun s) <= 0 then do
+						if gsPhase s == GameBattle && gunStateTime (gsComputerGun s) <= 0 then do
 							let minx = -fieldWidth
 							let maxx = fieldWidth
 							let at = enemyActor $ gsUserActorType s
@@ -557,10 +607,42 @@ main = do
 
 					-- update lives
 					get >>= \s -> liftIO $ do
-						js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
-						js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ (show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount) ++ "%"
+						if gsPhase s == GameBattle then do
+							js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
+							js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
+						else return ()
+
+					-- check end
+					get >>= \s -> do
+						if gsPhase s == GameBattle then do
+							let beaverLives = gsBeaverLives s
+							let pekaLives = gsPekaLives s
+							if beaverLives <= 0 || pekaLives <= 0 then do
+								put s { gsPhase = GameFinish }
+								let beaverWon = beaverLives > 0
+								let userWon = beaverWon == (gsUserActorType s == Beaver)
+								liftIO $ js_end (toJSString $ T.pack $ if beaverWon then "beaver" else "peka") $ toJSString $ T.pack $ if userWon then "You won!" else "You lose!"
+							else return ()
+						else return ()
+
+			-- register start functions
+			startMVar <- liftIO $ newEmptyMVar
+			liftIO $ do
+				let start at alpha = do
+					js_start
+					putMVar startMVar initialGameState
+						{ gsUserActorType = at
+						, gsCameraAlpha = alpha
+						}
+				beaverStart <- syncCallback AlwaysRetain False $ start Beaver $ (-pi) / 2
+				pekaStart <- syncCallback AlwaysRetain False $ start Peka $ pi / 2
+				js_registerStart beaverStart pekaStart
 
 			-- main loop
-			liftIO $ runGame initialGameState $ \frameTime s -> execStateT (gameStep frameTime) s
+			gameState <- liftIO $ takeMVar startMVar
+			liftIO $ runGame gameState $ \frameTime s -> execStateT (gameStep frameTime) s
 
-foreign import javascript unsafe "document.getElementById($1).style.width=$2" js_setStyleWidth :: JSString -> JSString -> IO ()
+foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSString -> JSString -> IO ()
+foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: JSFun (IO ()) -> JSFun (IO ()) -> IO ()
+foreign import javascript unsafe "document.getElementById('start').style.display='none';" js_start :: IO ()
+foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSString -> JSString -> IO ()

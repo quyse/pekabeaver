@@ -3,10 +3,11 @@ body {
 	-webkit-user-select: none;
 	-moz-user-select: none;
 	cursor: default;
+	background-color: #000;
 }
 
 .progress {
-	border: 1px solid black;
+	border: 1px solid #000;
 	position: absolute;
 	width: 200px;
 	height: 32px;
@@ -23,17 +24,63 @@ body {
 	position: absolute;
 	top: 1px;
 }
+.progress.beaver {
+	left: 50px;
+	top: 50px;
+}
 .progress.beaver > .bar {
 	background-color: #c64f00;
 	left: 0;
 }
 .progress.beaver > img {
-	left: 0;
+	left: -32px;
+}
+.progress.peka {
+	right: 50px;
+	top: 50px;
 }
 .progress.peka > .bar {
 	background-color: #fdda58;
 	right: 0;
 }
 .progress.peka > img {
+	right: -32px;
+}
+
+.title {
+	text-align: center;
+	color: white;
+	font-size: 50px;
+}
+
+.start {
+	position: absolute;
+	left: 0;
 	right: 0;
+	top: 0;
+	bottom: 0;
+	z-index: 1;
+}
+.start > .select {
+	text-align: center;
+}
+.start > .select > img {
+	width: 400px;
+}
+
+.end {
+	display: none;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	z-index: 1;
+}
+.end > .picture {
+	text-align: center;
+	display: none;
+}
+.end > .picture > img {
+	width: 700px;
 }
