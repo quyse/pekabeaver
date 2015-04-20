@@ -65,7 +65,9 @@ body {
 	text-align: center;
 }
 .start > .select > img {
-	width: 400px;
+	height: 200px;
+	cursor: pointer;
+	border: 1px solid #f00;
 }
 
 .end {

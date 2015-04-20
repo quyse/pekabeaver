@@ -59,7 +59,7 @@ data Actor = Actor
 data ActorType = Peka | Beaver deriving (Eq, Show)
 
 actorFlySpeed :: Float
-actorFlySpeed = 200
+actorFlySpeed = 445--200
 
 actorGroundSpeed :: Float
 actorGroundSpeed = 50
@@ -68,7 +68,7 @@ actorAngleSpeed :: Float
 actorAngleSpeed = actorGroundSpeed / actorOffset
 
 gravity :: Float
-gravity = 180
+gravity = 889--180
 
 actorOffset :: Float
 actorOffset = 5
@@ -95,7 +95,7 @@ actorWinningTime :: Float
 actorWinningTime = 1
 
 livesAmount :: Int
-livesAmount = 20
+livesAmount = 50
 
 moveClickThreshold :: Num a => a
 moveClickThreshold = 50
@@ -124,7 +124,7 @@ spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
 spawnActor at s f = maybeActor where
 	sin2angle = (norm $ s - f) * gravity / (actorFlySpeed * actorFlySpeed)
 	angle = 0.5 * (pi - asin sin2angle)
-	maybeActor = if sin2angle >= 1 then Nothing else Just Actor
+	maybeActor = if sin2angle >= 1 || norm (castlePosition at - f) < 50 then Nothing else Just Actor
 		{ actorType = at
 		, actorStartPosition = s
 		, actorFinishPosition = f
