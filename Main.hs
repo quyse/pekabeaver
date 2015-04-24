@@ -7,8 +7,6 @@ import Control.Monad.State
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource
 import qualified Data.Text as T
-import GHCJS.Types
-import GHCJS.Foreign
 import System.Random
 import Text.Show.Pretty(ppShow)
 
@@ -22,6 +20,11 @@ import Flaw.Input
 import Flaw.Window
 
 import Assets
+
+#if defined(ghcjs_HOST_OS)
+import GHCJS.Types
+import GHCJS.Foreign
+#endif
 
 data GameState = GameState
 	{ gsPhase :: GamePhase
@@ -278,7 +281,7 @@ main = do
 				gameStep frameTime = do
 				-- check exit
 #if !defined(ghcjs_HOST_OS)
-					loop <- tryTakeMVar windowLoopVar
+					loop <- liftIO $ tryTakeMVar windowLoopVar
 					case loop of
 						Just True -> liftIO $ exitGame
 						_ -> return ()
@@ -605,6 +608,8 @@ main = do
 						{ gsLightAngle = gsLightAngle s + frameTime * 3
 						})
 
+#if defined(ghcjs_HOST_OS)
+
 					-- update lives
 					get >>= \s -> liftIO $ do
 						if gsPhase s == GameBattle then do
@@ -646,3 +651,13 @@ foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'
 foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: JSFun (IO ()) -> JSFun (IO ()) -> IO ()
 foreign import javascript unsafe "document.getElementById('start').style.display='none';" js_start :: IO ()
 foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSString -> JSString -> IO ()
+
+#else
+
+			-- main loop
+			liftIO $ runGame initialGameState
+				{ gsUserActorType = Peka
+				, gsCameraAlpha = pi / 2
+				} $ \frameTime s -> execStateT (gameStep frameTime) s
+
+#endif
