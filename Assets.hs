@@ -50,10 +50,10 @@ pekaGeometry :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -
 pekaGeometry = $(loadGeometry "assets/peka.DAE" "geom-peka")
 
 fieldTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
-fieldTexture = $(loadPngTextureExp "assets/images/0_castle.jpg")
+fieldTexture = $(loadTextureExp "assets/images/0_castle.jpg")
 
 beaverTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
-beaverTexture = $(loadPngTextureExp "assets/images/0_beaver.jpg")
+beaverTexture = $(loadTextureExp "assets/images/0_beaver.jpg")
 
 pekaTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
-pekaTexture = $(loadPngTextureExp "assets/images/0_peka0.png")
+pekaTexture = $(loadTextureExp "assets/images/0_peka0.png")
