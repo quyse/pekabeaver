@@ -24,6 +24,7 @@ import Flaw.Build
 import Flaw.Game
 import Flaw.Game.Texture
 import Flaw.Graphics
+import Flaw.Graphics.Texture
 
 import AssetTypes
 
