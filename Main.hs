@@ -62,19 +62,19 @@ data Actor = Actor
 data ActorType = Peka | Beaver deriving (Eq, Show)
 
 actorFlySpeed :: Float
-actorFlySpeed = 445--200
+actorFlySpeed = 11.3
 
 actorGroundSpeed :: Float
-actorGroundSpeed = 50
+actorGroundSpeed = 1.27
 
 actorAngleSpeed :: Float
 actorAngleSpeed = actorGroundSpeed / actorOffset
 
 gravity :: Float
-gravity = 889--180
+gravity = 22.5
 
 actorOffset :: Float
-actorOffset = 5
+actorOffset = 0.127
 
 gunCoolDown :: Float
 gunCoolDown = 0.5
@@ -86,10 +86,10 @@ actorExplodeTime :: Float
 actorExplodeTime = 0.5
 
 actorExplodeDistance :: Float
-actorExplodeDistance = 5
+actorExplodeDistance = 0.127
 
 actorWinningOffset :: Float
-actorWinningOffset = 50
+actorWinningOffset = 1.27
 
 actorWinningScale :: Float
 actorWinningScale = 5
@@ -127,7 +127,7 @@ spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
 spawnActor at s f = maybeActor where
 	sin2angle = (norm $ s - f) * gravity / (actorFlySpeed * actorFlySpeed)
 	angle = 0.5 * (pi - asin sin2angle)
-	maybeActor = if sin2angle >= 1 || norm (castlePosition at - f) < 50 then Nothing else Just Actor
+	maybeActor = if sin2angle >= 1 || norm (castlePosition at - f) < 1.27 then Nothing else Just Actor
 		{ actorType = at
 		, actorStartPosition = s
 		, actorFinishPosition = f
@@ -139,16 +139,16 @@ spawnActor at s f = maybeActor where
 
 castlePosition :: ActorType -> Vec2f
 castlePosition at = case at of
-	Peka -> Vec2 0 200
-	Beaver -> Vec2 0 (-200)
+	Peka -> Vec2 0 5
+	Beaver -> Vec2 0 (-5)
 
 castleLine :: ActorType -> Float
 castleLine at = case at of
-	Peka -> 150
-	Beaver -> -150
+	Peka -> 3.8
+	Beaver -> -3.8
 
 fieldWidth :: Float
-fieldWidth = 100
+fieldWidth = 2.5
 
 enemyActor :: ActorType -> ActorType
 enemyActor at = case at of
@@ -162,7 +162,7 @@ initialGameState = GameState
 	{ gsPhase = GameBattle
 	, gsCameraAlpha = 0
 	, gsCameraBeta = 0.35
-	, gsCameraDistance = 400
+	, gsCameraDistance = 10
 	, gsLightAngle = 0
 	, gsActors = []
 	, gsFirstCursor = Nothing
@@ -305,7 +305,7 @@ main = do
 							let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
 
 							let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
-							let proj = projectionPerspectiveFov (pi / 4) aspect 0.1 (1000 :: Float)
+							let proj = projectionPerspectiveFov (pi / 4) aspect 0.01 (50 :: Float)
 							let viewProj = mul proj view
 							renderUniform usCamera uViewProj viewProj
 							renderUniform usCamera uCameraPosition cameraPosition
@@ -314,7 +314,7 @@ main = do
 
 							renderUniform usLight uLightPosition $ let
 								angle = gsLightAngle rs
-								in Vec3 (30 * cos angle) (30 * sin angle) 30
+								in Vec3 (2 * cos angle) (2 * sin angle) 2
 							renderUploadUniformStorage usLight
 							renderUniformStorage usLight
 
@@ -349,7 +349,7 @@ main = do
 								let world = case as of
 									ActorFlying _ -> mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
 									ActorRunning -> if at == Peka then mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
-									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 2 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
+									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 0.05 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
 									ActorExplode ->
 										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
 										mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
@@ -416,7 +416,7 @@ main = do
 														}
 											Nothing -> return ()
 									EventMouse (RawMouseMoveEvent _dx _dy dz) -> state $ \s -> ((), s
-										{ gsCameraDistance = max 100 $ min 500 $ dz * (-0.1) + gsCameraDistance s
+										{ gsCameraDistance = max 2.5 $ min 12.7 $ dz * (-0.0025) + gsCameraDistance s
 										})
 									_ -> return ()
 								process
@@ -463,7 +463,7 @@ main = do
 								if t >= tt then do
 									let finishPosition = castlePosition $ enemyActor at
 									let len = norm $ finishPosition - f
-									if len < 10 then do
+									if len < 0.25 then do
 										state $ \s -> ((), case at of
 											Beaver -> s { gsPekaLives = gsPekaLives s - 1 }
 											Peka -> s { gsBeaverLives = gsBeaverLives s - 1 }
@@ -519,7 +519,7 @@ main = do
 							} -> let
 								Vec3 px py _pz = calcActorPosition actor
 								in
-									if at == eat || as == ActorDead || norm (ep - (Vec2 px py)) > 20 then actor
+									if at == eat || as == ActorDead || norm (ep - (Vec2 px py)) > 0.5 then actor
 									else actor
 										{ actorState = ActorDead
 										, actorTime = 0
@@ -540,7 +540,7 @@ main = do
 								p2 = calcActorPosition actor2
 								at2 = actorType actor2
 								as2 = actorState actor2
-								in at == at2 || as2 /= ActorRunning || norm (p - p2) > 10
+								in at == at2 || as2 /= ActorRunning || norm (p - p2) > 0.25
 								) actors
 							in if keep then actor
 								else let startPosition = Vec2 px py in actor
