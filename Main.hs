@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP, FlexibleContexts, JavaScriptFFI, OverloadedStrings #-}
 
+import Control.Concurrent
 import Control.Concurrent.MVar
+import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.State
@@ -17,6 +19,8 @@ import Flaw.Graphics.Sampler
 import Flaw.Math
 import Flaw.Math.Geometry
 import Flaw.Input
+import Flaw.Input.Mouse
+import Flaw.Input.Keyboard
 import Flaw.Window
 
 import Assets
@@ -228,12 +232,29 @@ main = do
 			-- init game
 			(_, (window, device, context, presenter, inputManager)) <- initGame "PEKABEAVER" 1024 768 True
 
-#if !defined(ghcjs_HOST_OS)
+			-- run detection of closed window
 			windowLoopVar <- liftIO $ newEmptyMVar
-			liftIO $ addWindowCallback window $ \event -> case event of
-				DestroyWindowEvent -> putMVar windowLoopVar True
-				_ -> return ()
-#endif
+			windowEventsChan <- liftIO $ atomically $ chanWindowEvents window
+			_ <- liftIO $ forkIO $ do
+				let loop = do
+					event <- atomically $ readTChan windowEventsChan
+					case event of
+						DestroyWindowEvent -> putMVar windowLoopVar True
+						_ -> loop
+				loop
+
+			-- run input processing thread
+			inputChan <- liftIO newTChanIO
+			_ <- liftIO $ forkIO $ do
+				keyboardChan <- atomically $ chanInputEvents inputManager
+				mouseChan <- atomically $ chanInputEvents inputManager
+				forever $ atomically $ do
+					let readKeyboard = liftM Left $ readTChan keyboardChan
+					let readMouse = liftM Right $ readTChan mouseChan
+					writeTChan inputChan =<< orElse readKeyboard readMouse
+			-- initial input states
+			keyboardState <- liftIO $ atomically initialInputState
+			mouseState <- liftIO $ atomically initialInputState
 
 			-- load field
 			(vbField, ibField, icField) <- fieldGeometry device
@@ -365,28 +386,25 @@ main = do
 							return (viewProj, viewportWidth, viewportHeight)
 
 					-- process input
-					inputFrame <- liftIO $ nextInputFrame inputManager
-
 					let process = do
 						let getMousePoint = do
-							(cursorX, cursorY) <- liftIO $ getMouseCursor inputFrame
+							(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
 							let frontPoint = getFrontScreenPoint viewProj $ Vec3
 								((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
 								(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
 								0
 							return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
-						maybeEvent <- liftIO $ nextInputEvent inputFrame
+						maybeEvent <- liftIO $ atomically $ tryReadTChan inputChan
 						case maybeEvent of
-							Just event -> do
-								--putStrLn $ show event
-								case event of
-									EventMouse (MouseDownEvent LeftMouseButton) -> do
-										cursor <- liftIO $ getMouseCursor inputFrame
+							Just (Left mouseEvent) -> do
+								case mouseEvent of
+									MouseDownEvent LeftMouseButton -> do
+										cursor <- liftIO $ atomically $ getMouseCursor mouseState
 										state $ \s -> ((), s
 											{ gsFirstCursor = Just (cursor, cursor)
 											})
-									EventMouse (MouseUpEvent LeftMouseButton) -> do
-										(cursorX, cursorY) <- liftIO $ getMouseCursor inputFrame
+									MouseUpEvent LeftMouseButton -> do
+										(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
 										s1 <- get
 										case gsFirstCursor s1 of
 											Just ((firstCursorX, firstCursorY), _) -> do
@@ -400,7 +418,7 @@ main = do
 													{ gsFirstCursor = Nothing
 													})
 											Nothing -> return ()
-									EventMouse (CursorMoveEvent cursorX cursorY) -> do
+									CursorMoveEvent cursorX cursorY -> do
 										s <- get
 										case gsFirstCursor s of
 											Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
@@ -415,20 +433,25 @@ main = do
 														{ gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
 														}
 											Nothing -> return ()
-									EventMouse (RawMouseMoveEvent _dx _dy dz) -> state $ \s -> ((), s
+									RawMouseMoveEvent _dx _dy dz -> state $ \s -> ((), s
 										{ gsCameraDistance = max 2.5 $ min 12.7 $ dz * (-0.0025) + gsCameraDistance s
 										})
 									_ -> return ()
-								process
+								liftIO $ atomically $ applyInputEvent mouseState mouseEvent
+							Just (Right keyboardEvent) -> do
+								liftIO $ atomically $ applyInputEvent keyboardState (keyboardEvent :: KeyboardEvent)
+							Nothing -> return ()
+						case maybeEvent of
+							Just _event -> process
 							Nothing -> return ()
 					process
 
 					-- process camera rotation
 					do
-						up <- liftIO $ getKeyState inputFrame KeyUp
-						down <- liftIO $ getKeyState inputFrame KeyDown
-						left <- liftIO $ getKeyState inputFrame KeyLeft
-						right <- liftIO $ getKeyState inputFrame KeyRight
+						up <- liftIO $ atomically $ getKeyState keyboardState KeyUp
+						down <- liftIO $ atomically $ getKeyState keyboardState KeyDown
+						left <- liftIO $ atomically $ getKeyState keyboardState KeyLeft
+						right <- liftIO $ atomically $ getKeyState keyboardState KeyRight
 						state $ \s -> ((), s
 							{ gsCameraAlpha = gsCameraAlpha s + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
 							, gsCameraBeta = max 0.1 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
