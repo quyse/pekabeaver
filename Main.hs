@@ -439,6 +439,9 @@ main = do
 									_ -> return ()
 								liftIO $ atomically $ applyInputEvent mouseState mouseEvent
 							Just (Right keyboardEvent) -> do
+								case keyboardEvent of
+									KeyDownEvent KeyEscape -> liftIO $ putMVar windowLoopVar True
+									_ -> return ()
 								liftIO $ atomically $ applyInputEvent keyboardState (keyboardEvent :: KeyboardEvent)
 							Nothing -> return ()
 						case maybeEvent of
