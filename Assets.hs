@@ -11,8 +11,6 @@ module Assets
 	) where
 
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Control
-import Control.Monad.Trans.Resource
 import qualified Data.ByteString as B
 import Data.Word
 import Foreign.Storable
@@ -25,12 +23,13 @@ import Flaw.Game
 import Flaw.Game.Texture
 import Flaw.Graphics
 import Flaw.Graphics.Texture
+import Flaw.Resource
 
 import AssetTypes
 
 type Geometry = (VertexBufferId GameGraphicsDevice, IndexBufferId GameGraphicsDevice, Int)
 
-fieldGeometry :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m Geometry
+fieldGeometry :: ResourceIO m => GameGraphicsDevice -> m Geometry
 #if ghcjs_HOST_OS
 fieldGeometry device = do
 	verticesBytes <- liftIO $(embedIOExp =<< loadFile "assets/field.vertices")
@@ -44,17 +43,17 @@ fieldGeometry device = do
 fieldGeometry = $(loadGeometry "assets/field.DAE" "geom-field")
 #endif
 
-beaverGeometry :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m Geometry
+beaverGeometry :: ResourceIO m => GameGraphicsDevice -> m Geometry
 beaverGeometry = $(loadGeometry "assets/beaver.DAE" "geom-Beaver")
 
-pekaGeometry :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m Geometry
+pekaGeometry :: ResourceIO m => GameGraphicsDevice -> m Geometry
 pekaGeometry = $(loadGeometry "assets/peka.DAE" "geom-peka")
 
-fieldTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
+fieldTexture :: ResourceIO m => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
 fieldTexture = $(loadTextureExp "assets/images/0_castle.jpg")
 
-beaverTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
+beaverTexture :: ResourceIO m => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
 beaverTexture = $(loadTextureExp "assets/images/0_beaver.jpg")
 
-pekaTexture :: (MonadResource m, MonadBaseControl IO m) => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
+pekaTexture :: ResourceIO m => GameGraphicsDevice -> m (ReleaseKey, TextureId GameGraphicsDevice)
 pekaTexture = $(loadTextureExp "assets/images/0_peka0.png")

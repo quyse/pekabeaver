@@ -7,7 +7,6 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Resource
 import qualified Data.Text as T
 import System.Random
 import Text.Show.Pretty(ppShow)
@@ -21,6 +20,7 @@ import Flaw.Math.Geometry
 import Flaw.Input
 import Flaw.Input.Mouse
 import Flaw.Input.Keyboard
+import Flaw.Resource
 import Flaw.Window
 
 import Assets
@@ -227,7 +227,7 @@ main = do
 		handler :: SomeException -> IO ()
 		handler = putStrLn . show
 	handle handler $ do
-		runResourceT $ do
+		runResourceIO $ do
 
 			-- init game
 			(_, (window, device, context, presenter, inputManager)) <- initGame "PEKABEAVER" 1024 768 True

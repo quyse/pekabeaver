@@ -2,7 +2,6 @@ import qualified Data.ByteString.Lazy as BL
 
 import Flaw.Asset.Collada
 
-import Control.Monad.IO.Class
 import Data.Word
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
