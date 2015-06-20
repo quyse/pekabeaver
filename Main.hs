@@ -11,7 +11,7 @@ import qualified Data.Text as T
 import System.Random
 import Text.Show.Pretty(ppShow)
 
-import Flaw.Game
+import Flaw.App
 import Flaw.Graphics
 import Flaw.Graphics.Program
 import Flaw.Graphics.Sampler
@@ -229,8 +229,8 @@ main = do
 	handle handler $ do
 		runResourceIO $ do
 
-			-- init game
-			(_, (window, device, context, presenter, inputManager)) <- initGame "PEKABEAVER" 1024 768 True
+			-- init app
+			(_, (window, device, context, presenter, inputManager)) <- initApp "PEKABEAVER" 1024 768 True
 
 			-- run detection of closed window
 			windowLoopVar <- liftIO $ newEmptyMVar
@@ -304,7 +304,7 @@ main = do
 #if !defined(ghcjs_HOST_OS)
 					loop <- liftIO $ tryTakeMVar windowLoopVar
 					case loop of
-						Just True -> liftIO $ exitGame
+						Just True -> liftIO $ exitApp
 						_ -> return ()
 #endif
 
@@ -668,7 +668,7 @@ main = do
 
 			-- main loop
 			gameState <- liftIO $ takeMVar startMVar
-			liftIO $ runGame gameState $ \frameTime s -> execStateT (gameStep frameTime) s
+			liftIO $ runApp gameState $ \frameTime s -> execStateT (gameStep frameTime) s
 
 foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSString -> JSString -> IO ()
 foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: JSFun (IO ()) -> JSFun (IO ()) -> IO ()
@@ -678,7 +678,7 @@ foreign import javascript unsafe "document.getElementById('end-'+$1).style.displ
 #else
 
 			-- main loop
-			liftIO $ runGame initialGameState
+			liftIO $ runApp initialGameState
 				{ gsUserActorType = Peka
 				, gsCameraAlpha = pi / 2
 				} $ \frameTime s -> execStateT (gameStep frameTime) s
