@@ -244,14 +244,8 @@ main = do
 				loop
 
 			-- run input processing thread
-			inputChan <- liftIO newTChanIO
-			_ <- liftIO $ forkIO $ do
-				keyboardChan <- atomically $ chanInputEvents inputManager
-				mouseChan <- atomically $ chanInputEvents inputManager
-				forever $ atomically $ do
-					let readKeyboard = liftM Left $ readTChan keyboardChan
-					let readMouse = liftM Right $ readTChan mouseChan
-					writeTChan inputChan =<< orElse readKeyboard readMouse
+			keyboardChan <- liftIO $ atomically $ chanInputEvents inputManager
+			mouseChan <- liftIO $ atomically $ chanInputEvents inputManager
 			-- initial input states
 			keyboardState <- liftIO $ atomically initialInputState
 			mouseState <- liftIO $ atomically initialInputState
@@ -386,7 +380,7 @@ main = do
 							return (viewProj, viewportWidth, viewportHeight)
 
 					-- process input
-					let process = do
+					do
 						let getMousePoint = do
 							(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
 							let frontPoint = getFrontScreenPoint viewProj $ Vec3
@@ -394,9 +388,15 @@ main = do
 								(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
 								0
 							return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
-						maybeEvent <- liftIO $ atomically $ tryReadTChan inputChan
-						case maybeEvent of
-							Just (Left mouseEvent) -> do
+
+						let
+							processKeyboard = readTChan keyboardChan >>= \keyboardEvent -> return $ do
+								case keyboardEvent of
+									KeyDownEvent KeyEscape -> liftIO $ putMVar windowLoopVar True
+									_ -> return ()
+								liftIO $ atomically $ applyInputEvent keyboardState keyboardEvent
+								processEvent
+							processMouse = readTChan mouseChan >>= \mouseEvent -> return $ do
 								case mouseEvent of
 									MouseDownEvent LeftMouseButton -> do
 										cursor <- liftIO $ atomically $ getMouseCursor mouseState
@@ -438,13 +438,11 @@ main = do
 										})
 									_ -> return ()
 								liftIO $ atomically $ applyInputEvent mouseState mouseEvent
-							Just (Right keyboardEvent) -> do
-								liftIO $ atomically $ applyInputEvent keyboardState (keyboardEvent :: KeyboardEvent)
-							Nothing -> return ()
-						case maybeEvent of
-							Just _event -> process
-							Nothing -> return ()
-					process
+								processEvent
+							processEvent = do
+								action <- liftIO $ atomically $ orElse (orElse processKeyboard processMouse) (return $ return ())
+								action
+						processEvent
 
 					-- process camera rotation
 					do
