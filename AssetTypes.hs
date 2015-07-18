@@ -6,7 +6,6 @@ module AssetTypes
 	, loadGeometry
 	) where
 
-import Control.Monad.IO.Class
 import Data.Word
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
@@ -15,6 +14,7 @@ import Language.Haskell.TH
 
 import Flaw.Asset.Collada
 import Flaw.Asset.Geometry
+import Flaw.Book
 import Flaw.Build
 import Flaw.FFI
 import Flaw.Graphics
@@ -63,9 +63,10 @@ loadGeometry fileName elementId = do
 				return (verticesBytes, VG.length indices, isIndices32Bit, indicesBytes)
 			[|
 				\device -> do
-					(verticesBytes, indicesCount, isIndices32Bit, indicesBytes) <- liftIO $ $(embedIOExp d)
-					(_, vb) <- createStaticVertexBuffer device verticesBytes (sizeOf (undefined :: Vertex))
-					(_, ib) <- createStaticIndexBuffer device indicesBytes isIndices32Bit
-					return (vb, ib, indicesCount)
+					bk <- newBook
+					(verticesBytes, indicesCount, isIndices32Bit, indicesBytes) <- $(embedIOExp d)
+					vb <- book bk $ createStaticVertexBuffer device verticesBytes (sizeOf (undefined :: Vertex))
+					ib <- book bk $ createStaticIndexBuffer device indicesBytes isIndices32Bit
+					return ((vb, ib, indicesCount), freeBook bk)
 				|]
 		Left s -> fail s

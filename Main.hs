@@ -12,6 +12,8 @@ import System.Random
 import Text.Show.Pretty(ppShow)
 
 import Flaw.App
+import Flaw.Book
+import Flaw.Build
 import Flaw.Graphics
 import Flaw.Graphics.Program
 import Flaw.Graphics.Sampler
@@ -20,7 +22,6 @@ import Flaw.Math.Geometry
 import Flaw.Input
 import Flaw.Input.Mouse
 import Flaw.Input.Keyboard
-import Flaw.Resource
 import Flaw.Window
 
 import Assets
@@ -227,15 +228,15 @@ main = do
 		handler :: SomeException -> IO ()
 		handler = putStrLn . show
 	handle handler $ do
-		runResourceIO $ do
+		withBook $ \bk -> do
 
 			-- init app
-			(_, (window, device, context, presenter, inputManager)) <- initApp "PEKABEAVER" 1024 768 True
+			(window, device, context, presenter, inputManager) <- book bk $ initApp "PEKABEAVER" 1024 768 True
 
 			-- run detection of closed window
-			windowLoopVar <- liftIO $ newEmptyMVar
-			windowEventsChan <- liftIO $ atomically $ chanWindowEvents window
-			_ <- liftIO $ forkIO $ do
+			windowLoopVar <- newEmptyMVar
+			windowEventsChan <- atomically $ chanWindowEvents window
+			_ <- forkIO $ do
 				let loop = do
 					event <- atomically $ readTChan windowEventsChan
 					case event of
@@ -244,41 +245,41 @@ main = do
 				loop
 
 			-- run input processing thread
-			keyboardChan <- liftIO $ atomically $ chanInputEvents inputManager
-			mouseChan <- liftIO $ atomically $ chanInputEvents inputManager
+			keyboardChan <- atomically $ chanInputEvents inputManager
+			mouseChan <- atomically $ chanInputEvents inputManager
 			-- initial input states
-			keyboardState <- liftIO $ atomically initialInputState
-			mouseState <- liftIO $ atomically initialInputState
+			keyboardState <- atomically initialInputState
+			mouseState <- atomically initialInputState
 
 			-- load field
-			(vbField, ibField, icField) <- fieldGeometry device
-			(_, tField) <- fieldTexture device
+			(vbField, ibField, icField) <- book bk $ fieldGeometry device
+			tField <- book bk $ fieldTexture device
 
 			-- load beaver
-			(vbBeaver, ibBeaver, icBeaver) <- beaverGeometry device
-			(_, tBeaver) <- beaverTexture device
+			(vbBeaver, ibBeaver, icBeaver) <- book bk $ beaverGeometry device
+			tBeaver <- book bk $ beaverTexture device
 
 			-- load peka
-			(vbPeka, ibPeka, icPeka) <- pekaGeometry device
-			(_, tPeka) <- pekaTexture device
+			(vbPeka, ibPeka, icPeka) <- book bk $ pekaGeometry device
+			tPeka <- book bk $ pekaTexture device
 
-			(_, samplerState) <- createSamplerState device defaultSamplerStateInfo
+			samplerState <- book bk $ createSamplerState device defaultSamplerStateInfo
 
 			-- program
-			ubsCamera <- liftIO $ uniformBufferSlot 0
-			uViewProj <- liftIO $ uniform ubsCamera
-			uCameraPosition <- liftIO $ uniform ubsCamera
-			ubsLight <- liftIO $ uniformBufferSlot 1
-			uLightPosition <- liftIO $ uniform ubsLight
-			--ubsMaterial <- liftIO $ uniformBufferSlot 2
-			--uDiffuseColor <- liftIO $ uniform ubsMaterial
-			ubsObject <- liftIO $ uniformBufferSlot 3
-			uWorld <- liftIO $ uniform ubsObject
-			(_, usCamera) <- createUniformStorage device ubsCamera
-			(_, usLight) <- createUniformStorage device ubsLight
-			--(_, usMaterial) <- createUniformStorage device ubsMaterial
-			(_, usObject) <- createUniformStorage device ubsObject
-			(_, program) <- createProgram device $ do
+			ubsCamera <- uniformBufferSlot 0
+			uViewProj <- uniform ubsCamera
+			uCameraPosition <- uniform ubsCamera
+			ubsLight <- uniformBufferSlot 1
+			uLightPosition <- uniform ubsLight
+			--ubsMaterial <- uniformBufferSlot 2
+			--uDiffuseColor <- uniform ubsMaterial
+			ubsObject <- uniformBufferSlot 3
+			uWorld <- uniform ubsObject
+			usCamera <- book bk $ createUniformStorage device ubsCamera
+			usLight <- book bk $ createUniformStorage device ubsLight
+			--usMaterial <- book bk $ createUniformStorage device ubsMaterial
+			usObject <- book bk $ createUniformStorage device ubsObject
+			program <- book bk $ (createProgram device $ do
 				aPosition <- attribute 0 0 0 (AttributeVec3 AttributeFloat32)
 				aNormal <- attribute 0 12 0 (AttributeVec3 AttributeFloat32)
 				aTexcoord <- attribute 0 24 0 (AttributeVec2 AttributeFloat32)
