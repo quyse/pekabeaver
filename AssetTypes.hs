@@ -6,7 +6,9 @@ module AssetTypes
 	, loadGeometry
 	) where
 
+import Control.Monad
 import Data.Word
+import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import Foreign.Storable
@@ -29,18 +31,19 @@ genStruct "Vertex"
 deriving instance Eq Vertex
 deriving instance Ord Vertex
 
-vertexConstructor :: ColladaSettings -> (forall a v. Parse a v => String -> ColladaM [[a]]) -> ColladaM [Vertex]
+vertexConstructor :: ColladaSettings -> (forall a v. Parse a v => String -> ColladaM (v a, Int)) -> ColladaM (V.Vector Vertex)
 vertexConstructor ColladaSettings
 	{ colladaUnit = unit
 	} f = do
-	positions <- f "VERTEX"
-	normals <- f "NORMAL"
-	texcoords <- f "TEXCOORD"
-	return [Vertex
+	positions <- liftM chunks3stride $ f "VERTEX"
+	normals <- liftM chunks3stride $ f "NORMAL"
+	texcoords <- liftM chunks3stride $ f "TEXCOORD"
+	let create ((px, py, pz), (nx, ny, nz), (tx, ty, _tz)) = Vertex
 		{ f_Vertex_position = Vec3 (px * unit) (py * unit) (pz * unit)
 		, f_Vertex_normal = Vec3 nx ny nz
 		, f_Vertex_texcoord = Vec2 tx (1 - ty)
-		} | ([px, py, pz], [nx, ny, nz], [tx, ty, _tz]) <- zip3 positions normals texcoords]
+		}
+	return $ V.map create $ V.zip3 positions normals texcoords
 
 loadGeometry :: String -> String -> Q Exp
 loadGeometry fileName elementId = do
