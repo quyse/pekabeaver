@@ -1,8 +1,7 @@
 {-# LANGUAGE CPP, TemplateHaskell #-}
 
 module Assets
-	( Vertex(..)
-	, fieldGeometry
+	( fieldGeometry
 	, beaverGeometry
 	, pekaGeometry
 	, fieldTexture
@@ -18,6 +17,8 @@ import Language.Haskell.TH
 
 import Flaw.Asset.Collada
 import Flaw.Asset.Geometry
+import Flaw.Asset.Util
+import Flaw.Asset.Vertex
 import Flaw.Book
 import Flaw.Build
 import Flaw.App
@@ -27,9 +28,9 @@ import Flaw.Graphics.Texture
 
 import AssetTypes
 
-type Geometry = (VertexBufferId AppGraphicsDevice, IndexBufferId AppGraphicsDevice, Int)
+type LoadedGeometry = (VertexBufferId AppGraphicsDevice, IndexBufferId AppGraphicsDevice, Int)
 
-fieldGeometry :: AppGraphicsDevice -> IO (Geometry, IO ())
+fieldGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
 #if ghcjs_HOST_OS
 fieldGeometry device = do
 	bk <- newBook
@@ -37,18 +38,18 @@ fieldGeometry device = do
 	indicesBytes <- $(embedIOExp =<< loadFile "assets/field.indices")
 	let indicesCount = 50868
 	let isIndices32Bit = False
-	vb <- book bk $ createStaticVertexBuffer device verticesBytes (sizeOf (undefined :: Vertex))
+	vb <- book bk $ createStaticVertexBuffer device verticesBytes (sizeOf (undefined :: VertexPNT))
 	ib <- book bk $ createStaticIndexBuffer device indicesBytes isIndices32Bit
 	return ((vb, ib, indicesCount), freeBook bk)
 #else
-fieldGeometry = $(loadGeometry "assets/field.DAE" "geom-field")
+fieldGeometry = $(embedGeometry "assets/field.DAE" "geom-field")
 #endif
 
-beaverGeometry :: AppGraphicsDevice -> IO (Geometry, IO ())
-beaverGeometry = $(loadGeometry "assets/beaver.DAE" "geom-Beaver")
+beaverGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
+beaverGeometry = $(embedGeometry "assets/beaver.DAE" "geom-Beaver")
 
-pekaGeometry :: AppGraphicsDevice -> IO (Geometry, IO ())
-pekaGeometry = $(loadGeometry "assets/peka.DAE" "geom-peka")
+pekaGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
+pekaGeometry = $(embedGeometry "assets/peka.DAE" "geom-peka")
 
 fieldTexture :: AppGraphicsDevice -> IO (TextureId AppGraphicsDevice, IO ())
 fieldTexture = $(loadTextureExp "assets/images/0_castle.jpg")
