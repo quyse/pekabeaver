@@ -9,7 +9,6 @@ import Control.Monad.State
 import Control.Monad.IO.Class
 import qualified Data.Text as T
 import System.Random
-import Text.Show.Pretty(ppShow)
 
 import Flaw.App
 import Flaw.Book
@@ -28,7 +27,8 @@ import Assets
 
 #if defined(ghcjs_HOST_OS)
 import GHCJS.Types
-import GHCJS.Foreign
+import GHCJS.Foreign.Callback
+import GHCJS.Marshal.Pure
 #endif
 
 data GameState = GameState
@@ -279,7 +279,7 @@ main = do
 			usLight <- book bk $ createUniformStorage device ubsLight
 			--usMaterial <- book bk $ createUniformStorage device ubsMaterial
 			usObject <- book bk $ createUniformStorage device ubsObject
-			program <- book bk $ (createProgram device $ do
+			program <- book bk $ createProgram device $ do
 				aPosition <- attribute 0 0 0 (AttributeVec3 AttributeFloat32)
 				aNormal <- attribute 0 12 0 (AttributeVec3 AttributeFloat32)
 				aTexcoord <- attribute 0 24 0 (AttributeVec2 AttributeFloat32)
@@ -295,7 +295,7 @@ main = do
 			let
 				gameStep :: Float -> StateT GameState IO ()
 				gameStep frameTime = do
-				-- check exit
+					-- check exit
 #if !defined(ghcjs_HOST_OS)
 					loop <- liftIO $ tryTakeMVar windowLoopVar
 					case loop of
@@ -635,8 +635,8 @@ main = do
 					-- update lives
 					get >>= \s -> liftIO $ do
 						if gsPhase s == GameBattle then do
-							js_setStyleWidth (toJSString $ T.pack "beaver_lives") $ toJSString $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
-							js_setStyleWidth (toJSString $ T.pack "peka_lives") $ toJSString $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
+							js_setStyleWidth (pToJSRef $ T.pack "beaver_lives") $ pToJSRef $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
+							js_setStyleWidth (pToJSRef $ T.pack "peka_lives") $ pToJSRef $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
 						else return ()
 
 					-- check end
@@ -648,7 +648,7 @@ main = do
 								put s { gsPhase = GameFinish }
 								let beaverWon = beaverLives > 0
 								let userWon = beaverWon == (gsUserActorType s == Beaver)
-								liftIO $ js_end (toJSString $ T.pack $ if beaverWon then "beaver" else "peka") $ toJSString $ T.pack $ if userWon then "You won!" else "You lose!"
+								liftIO $ js_end (pToJSRef $ T.pack $ if beaverWon then "beaver" else "peka") $ pToJSRef $ T.pack $ if userWon then "You won!" else "You lose!"
 							else return ()
 						else return ()
 
@@ -661,18 +661,18 @@ main = do
 						{ gsUserActorType = at
 						, gsCameraAlpha = alpha
 						}
-				beaverStart <- syncCallback AlwaysRetain False $ start Beaver $ (-pi) / 2
-				pekaStart <- syncCallback AlwaysRetain False $ start Peka $ pi / 2
+				beaverStart <- syncCallback ThrowWouldBlock $ start Beaver $ (-pi) / 2
+				pekaStart <- syncCallback ThrowWouldBlock $ start Peka $ pi / 2
 				js_registerStart beaverStart pekaStart
 
 			-- main loop
 			gameState <- liftIO $ takeMVar startMVar
 			liftIO $ runApp gameState $ \frameTime s -> execStateT (gameStep frameTime) s
 
-foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSString -> JSString -> IO ()
-foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: JSFun (IO ()) -> JSFun (IO ()) -> IO ()
+foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSRef T.Text -> JSRef T.Text -> IO ()
+foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: Callback (IO ()) -> Callback (IO ()) -> IO ()
 foreign import javascript unsafe "document.getElementById('start').style.display='none';" js_start :: IO ()
-foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSString -> JSString -> IO ()
+foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSRef T.Text -> JSRef T.Text -> IO ()
 
 #else
 
