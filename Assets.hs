@@ -11,6 +11,7 @@ module Assets
 
 import Control.Monad.IO.Class
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import Data.Word
 import Foreign.Storable
 import Language.Haskell.TH
@@ -38,8 +39,8 @@ fieldGeometry device = do
 	indicesBytes <- $(embedIOExp =<< loadFile "assets/field.indices")
 	let indicesCount = 50868
 	let isIndices32Bit = False
-	vb <- book bk $ createStaticVertexBuffer device verticesBytes (sizeOf (undefined :: VertexPNT))
-	ib <- book bk $ createStaticIndexBuffer device indicesBytes isIndices32Bit
+	vb <- book bk $ createStaticVertexBuffer device (BL.toStrict verticesBytes) (sizeOf (undefined :: VertexPNT))
+	ib <- book bk $ createStaticIndexBuffer device (BL.toStrict indicesBytes) isIndices32Bit
 	return ((vb, ib, indicesCount), freeBook bk)
 #else
 fieldGeometry = $(embedGeometry "assets/field.DAE" "geom-field")
