@@ -231,7 +231,7 @@ main = do
 		withBook $ \bk -> do
 
 			-- init app
-			(window, device, context, presenter, inputManager) <- book bk $ initApp "PEKABEAVER" 1024 768 True
+			(window, device, context, presenter, inputManager) <- book bk $ initApp "PEKABEAVER" 1024 768 True False
 
 			-- run detection of closed window
 			windowLoopVar <- newEmptyMVar
@@ -635,8 +635,8 @@ main = do
 					-- update lives
 					get >>= \s -> liftIO $ do
 						if gsPhase s == GameBattle then do
-							js_setStyleWidth (pToJSRef $ T.pack "beaver_lives") $ pToJSRef $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
-							js_setStyleWidth (pToJSRef $ T.pack "peka_lives") $ pToJSRef $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
+							js_setStyleWidth (pToJSVal $ T.pack "beaver_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
+							js_setStyleWidth (pToJSVal $ T.pack "peka_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
 						else return ()
 
 					-- check end
@@ -648,7 +648,7 @@ main = do
 								put s { gsPhase = GameFinish }
 								let beaverWon = beaverLives > 0
 								let userWon = beaverWon == (gsUserActorType s == Beaver)
-								liftIO $ js_end (pToJSRef $ T.pack $ if beaverWon then "beaver" else "peka") $ pToJSRef $ T.pack $ if userWon then "You won!" else "You lose!"
+								liftIO $ js_end (pToJSVal $ T.pack $ if beaverWon then "beaver" else "peka") $ pToJSVal $ T.pack $ if userWon then "You won!" else "You lose!"
 							else return ()
 						else return ()
 
@@ -669,10 +669,10 @@ main = do
 			gameState <- liftIO $ takeMVar startMVar
 			liftIO $ runApp gameState $ \frameTime s -> execStateT (gameStep frameTime) s
 
-foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSRef T.Text -> JSRef T.Text -> IO ()
+foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSVal -> JSVal -> IO ()
 foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: Callback (IO ()) -> Callback (IO ()) -> IO ()
 foreign import javascript unsafe "document.getElementById('start').style.display='none';" js_start :: IO ()
-foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSRef T.Text -> JSRef T.Text -> IO ()
+foreign import javascript unsafe "document.getElementById('end-'+$1).style.display='block'; document.getElementById('end-title').innerText=$2; document.getElementById('end').style.display='block';" js_end :: JSVal -> JSVal -> IO ()
 
 #else
 
