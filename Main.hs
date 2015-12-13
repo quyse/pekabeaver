@@ -45,7 +45,7 @@ data GameState = GameState
 	, gsDamages :: [Damage]
 	, gsBeaverLives :: Int
 	, gsPekaLives :: Int
-	, gsUserSpawn :: Maybe Vec2f
+	, gsUserSpawn :: Maybe Float2
 	} deriving Show
 
 data GamePhase = GameBattle | GameFinish deriving (Eq, Show)
@@ -56,8 +56,8 @@ data GunState = GunState
 
 data Actor = Actor
 	{ actorType :: ActorType
-	, actorStartPosition :: !Vec2f
-	, actorFinishPosition :: !Vec2f
+	, actorStartPosition :: !Float2
+	, actorFinishPosition :: !Float2
 	, actorTime :: Float
 	, actorTotalTime :: Float
 	, actorState :: ActorState
@@ -110,7 +110,7 @@ moveClickThreshold = 50
 
 data ActorState = ActorFlying Float | ActorRunning | ActorDead | ActorExplode | ActorWinning deriving (Eq, Show)
 
-calcActorPosition :: Actor -> Vec3f
+calcActorPosition :: Actor -> Float3
 calcActorPosition Actor
 	{ actorStartPosition = Vec2 sx sy
 	, actorFinishPosition = Vec2 fx fy
@@ -128,7 +128,7 @@ calcActorPosition Actor
 		k = t / tt
 	ActorWinning -> Vec3 sx sy actorOffset
 
-spawnActor :: ActorType -> Vec2f -> Vec2f -> Maybe Actor
+spawnActor :: ActorType -> Float2 -> Float2 -> Maybe Actor
 spawnActor at s f = maybeActor where
 	sin2angle = (norm $ s - f) * gravity / (actorFlySpeed * actorFlySpeed)
 	angle = 0.5 * (pi - asin sin2angle)
@@ -142,7 +142,7 @@ spawnActor at s f = maybeActor where
 		, actorAngle = 0
 		}
 
-castlePosition :: ActorType -> Vec2f
+castlePosition :: ActorType -> Float2
 castlePosition at = case at of
 	Peka -> Vec2 0 5
 	Beaver -> Vec2 0 (-5)
@@ -160,7 +160,7 @@ enemyActor at = case at of
 	Peka -> Beaver
 	Beaver -> Peka
 
-data Damage = Damage ActorType Vec2f deriving Show
+data Damage = Damage ActorType Float2 deriving Show
 
 initialGameState :: GameState
 initialGameState = GameState
@@ -184,7 +184,7 @@ initialGameState = GameState
 	, gsUserSpawn = Nothing
 	}
 
-getFrontScreenPoint :: Fractional a => Mat4x4 a -> Vec3 a -> Vec3 a
+getFrontScreenPoint :: (Vectorized a, Fractional a) => Mat4x4 a -> Vec3 a -> Vec3 a
 getFrontScreenPoint (Mat4x4
 	m11 m12 m13 m14
 	m21 m22 m23 m24
@@ -208,10 +208,10 @@ getFrontScreenPoint (Mat4x4
 	dy = a11 * (a24 * a33 - a23 * a34) - a14 * (a21 * a33 - a23 * a31) + a13 * (a21 * a34 - a24 * a31)
 	dz = a11 * (a22 * a34 - a24 * a32) - a12 * (a21 * a34 - a24 * a31) + a14 * (a21 * a32 - a22 * a31)
 
-intersectRay :: Fractional a => Vec3 a -> Vec3 a -> Vec3 a -> a -> Vec3 a
+intersectRay :: (Vectorized a, Fractional a) => Vec3 a -> Vec3 a -> Vec3 a -> a -> Vec3 a
 intersectRay a d n nq = a + d * vecFromScalar ((nq - dot a n) / (dot d n))
 
-affineActorLookAt :: Floating a => Vec3 a -> Vec3 a -> Vec3 a -> Mat4x4 a
+affineActorLookAt :: (Vectorized a, Floating a) => Vec3 a -> Vec3 a -> Vec3 a -> Mat4x4 a
 affineActorLookAt position@(Vec3 px py pz) target direction = r where
 	y@(Vec3 yx yy yz) = normalize $ target - position
 	x@(Vec3 xx xy xz) = normalize $ cross y direction
@@ -283,14 +283,14 @@ main = do
 				aPosition <- attribute 0 0 0 (AttributeVec3 AttributeFloat32)
 				aNormal <- attribute 0 12 0 (AttributeVec3 AttributeFloat32)
 				aTexcoord <- attribute 0 24 0 (AttributeVec2 AttributeFloat32)
-				worldPosition <- temp $ mul uWorld $ combineVec (aPosition, constf 1)
-				worldNormal <- temp $ mul uWorld $ combineVec (aNormal, constf 0)
+				worldPosition <- temp $ mul uWorld $ cvec31 aPosition (constf 1)
+				worldNormal <- temp $ mul uWorld $ cvec31 aNormal (constf 0)
 				rasterize (mul uViewProj worldPosition) $ do
 					let toLight = normalize $ (xyz__ worldPosition) - uLightPosition
 					--diffuse <- temp $ max_ 0 $ dot toLight $ xyz__ worldNormal
 					diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ normalize $ xyz__ worldNormal)
 					diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
-					colorTarget 0 $ combineVec (diffuseColor * vecFromScalar diffuse, constf 1)
+					colorTarget 0 $ cvec31 (diffuseColor * vecFromScalar diffuse) (constf 1)
 
 			let
 				gameStep :: Float -> StateT GameState IO ()
@@ -317,7 +317,9 @@ main = do
 							renderClearDepth 1
 							renderProgram program
 
-							(viewportWidth, viewportHeight) <- renderGetViewport
+							Vec4 viewportLeft viewportTop viewportRight viewportBottom <- renderGetViewport
+							let viewportWidth = viewportRight - viewportLeft
+							let viewportHeight = viewportBottom - viewportTop
 							let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
 
 							let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
@@ -339,7 +341,7 @@ main = do
 							--renderUniformStorage usMaterial
 
 							-- render field
-							renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Vec3f)
+							renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Float3)
 							renderUploadUniformStorage usObject
 							renderUniformStorage usObject
 							renderVertexBuffer 0 vbField
