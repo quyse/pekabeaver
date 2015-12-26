@@ -1,18 +1,15 @@
 {-# LANGUAGE CPP, FlexibleContexts, JavaScriptFFI, OverloadedStrings #-}
 
 import Control.Concurrent
-import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.State
-import Control.Monad.IO.Class
 import qualified Data.Text as T
 import System.Random
 
 import Flaw.App
 import Flaw.Book
-import Flaw.Build
 import Flaw.Graphics
 import Flaw.Graphics.Program
 import Flaw.Graphics.Sampler
