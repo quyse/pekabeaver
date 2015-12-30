@@ -5,6 +5,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Control.Monad.State
+import Data.IORef
 import qualified Data.Text as T
 import System.Random
 
@@ -652,11 +653,11 @@ main = do
 						else return ()
 
 			-- register start functions
-			startMVar <- liftIO $ newEmptyMVar
+			gameStateVar <- liftIO $ newEmptyMVar
 			liftIO $ do
 				let start at alpha = do
 					js_start
-					putMVar startMVar initialGameState
+					putMVar gameStateVar initialGameState
 						{ gsUserActorType = at
 						, gsCameraAlpha = alpha
 						}
@@ -665,8 +666,7 @@ main = do
 				js_registerStart beaverStart pekaStart
 
 			-- main loop
-			gameState <- liftIO $ takeMVar startMVar
-			liftIO $ runApp gameState $ \frameTime s -> execStateT (gameStep frameTime) s
+			liftIO $ runApp $ \frameTime -> modifyMVar_ gameStateVar $ execStateT (gameStep frameTime)
 
 foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSVal -> JSVal -> IO ()
 foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: Callback (IO ()) -> Callback (IO ()) -> IO ()
@@ -676,9 +676,11 @@ foreign import javascript unsafe "document.getElementById('end-'+$1).style.displ
 #else
 
 			-- main loop
-			liftIO $ runApp initialGameState
-				{ gsUserActorType = Peka
-				, gsCameraAlpha = pi / 2
-				} $ \frameTime s -> execStateT (gameStep frameTime) s
+			liftIO $ do
+				gameStateRef <- newIORef $ initialGameState
+					{ gsUserActorType = Peka
+					, gsCameraAlpha = pi / 2
+					}
+				runApp $ \frameTime -> writeIORef gameStateRef =<< execStateT (gameStep frameTime) =<< readIORef gameStateRef
 
 #endif
