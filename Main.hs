@@ -229,7 +229,10 @@ main = do
 		withBook $ \bk -> do
 
 			-- init app
-			(window, device, context, presenter, inputManager) <- book bk $ initApp "PEKABEAVER" 1024 768 True False
+			(window, device, context, presenter, inputManager) <- book bk $ initApp $ appConfig
+				{ appConfigTitle = "PEKABEAVER"
+				, appConfigNeedDepthBuffer = True
+				}
 
 			-- run detection of closed window
 			windowLoopVar <- newEmptyMVar
