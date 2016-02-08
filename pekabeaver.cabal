@@ -14,9 +14,9 @@ cabal-version:       >=1.10
 
 executable pekabeaver
   main-is:             Main.hs
-  other-modules:       Assets, AssetTypes
+  other-modules:       Assets
   -- other-extensions:    
-  build-depends:       base, bytestring, flaw-app, flaw-asset, flaw-base, flaw-build, flaw-ffi, flaw-graphics, flaw-math, flaw-input, flaw-window, mtl, random, stm, template-haskell, text, transformers, vector
+  build-depends:       base, bytestring, flaw-app, flaw-base, flaw-build, flaw-collada, flaw-ffi, flaw-graphics, flaw-math, flaw-input, flaw-visual, flaw-window, mtl, random, stm, template-haskell, text, transformers, vector
   -- hs-source-dirs:      
   default-language:    Haskell2010
   if impl(ghcjs)

@@ -10,6 +10,7 @@ packages:
   - flaw-base
   - flaw-build
   - flaw-canvas
+  - flaw-collada
   - flaw-dx11
   - flaw-ffi
   - flaw-font
@@ -23,6 +24,7 @@ packages:
   - flaw-physics
   - flaw-sdl
   - flaw-sl
+  - flaw-visual
   - flaw-webgl
   - flaw-window
   extra-dep: true

@@ -19,6 +19,7 @@ import Flaw.Math.Geometry
 import Flaw.Input
 import Flaw.Input.Mouse
 import Flaw.Input.Keyboard
+import Flaw.Visual.Geometry
 import Flaw.Window
 
 import Assets
@@ -253,15 +254,27 @@ main = do
 			mouseState <- atomically initialInputState
 
 			-- load field
-			(vbField, ibField, icField) <- book bk $ fieldGeometry device
+			Geometry
+				{ geometryVertexBuffer = vbField
+				, geometryIndexBuffer = ibField
+				, geometryIndicesCount = icField
+				} <- book bk $ fieldGeometry device
 			tField <- book bk $ fieldTexture device
 
 			-- load beaver
-			(vbBeaver, ibBeaver, icBeaver) <- book bk $ beaverGeometry device
+			Geometry
+				{ geometryVertexBuffer = vbBeaver
+				, geometryIndexBuffer = ibBeaver
+				, geometryIndicesCount = icBeaver
+				} <- book bk $ beaverGeometry device
 			tBeaver <- book bk $ beaverTexture device
 
 			-- load peka
-			(vbPeka, ibPeka, icPeka) <- book bk $ pekaGeometry device
+			Geometry
+				{ geometryVertexBuffer = vbPeka
+				, geometryIndexBuffer = ibPeka
+				, geometryIndicesCount = icPeka
+				} <- book bk $ pekaGeometry device
 			tPeka <- book bk $ pekaTexture device
 
 			samplerState <- book bk $ createSamplerState device defaultSamplerStateInfo
@@ -366,8 +379,8 @@ main = do
 								let position = calcActorPosition actor
 								let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
 								let world = case as of
-									ActorFlying _ -> mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
-									ActorRunning -> if at == Peka then mul translation $ affineFromQuaternion $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
+									ActorFlying _ -> mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
+									ActorRunning -> if at == Peka then mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
 									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 0.05 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
 									ActorExplode ->
 										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5

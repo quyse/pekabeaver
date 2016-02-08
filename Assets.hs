@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 
 module Assets
 	( fieldGeometry
@@ -9,30 +9,27 @@ module Assets
 	, pekaTexture
 	) where
 
-import Flaw.Asset.Util
 import Flaw.App
-import Flaw.App.Texture
+import Flaw.Asset.Collada
 import Flaw.Graphics
 import Flaw.Graphics.Texture
+import Flaw.Visual.Geometry
+import Flaw.Visual.Texture
 
-import AssetTypes
+fieldGeometry :: AppGraphicsDevice -> IO (Geometry AppGraphicsDevice, IO ())
+fieldGeometry = $(embedLoadGeometryExp "assets/field.DAE" (getElementById "geom-field"))
 
-type LoadedGeometry = (VertexBufferId AppGraphicsDevice, IndexBufferId AppGraphicsDevice, Int)
+beaverGeometry :: AppGraphicsDevice -> IO (Geometry AppGraphicsDevice, IO ())
+beaverGeometry = $(embedLoadGeometryExp "assets/beaver.DAE" (getElementById "geom-Beaver"))
 
-fieldGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
-fieldGeometry = $(embedGeometry "assets/field.DAE" "geom-field")
-
-beaverGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
-beaverGeometry = $(embedGeometry "assets/beaver.DAE" "geom-Beaver")
-
-pekaGeometry :: AppGraphicsDevice -> IO (LoadedGeometry, IO ())
-pekaGeometry = $(embedGeometry "assets/peka.DAE" "geom-peka")
+pekaGeometry :: AppGraphicsDevice -> IO (Geometry AppGraphicsDevice, IO ())
+pekaGeometry = $(embedLoadGeometryExp "assets/peka.DAE" (getElementById "geom-peka"))
 
 fieldTexture :: AppGraphicsDevice -> IO (TextureId AppGraphicsDevice, IO ())
-fieldTexture = $(loadTextureExp "assets/images/0_castle.jpg")
+fieldTexture = $(loadDxtCompressedTextureExp "assets/images/0_castle.jpg")
 
 beaverTexture :: AppGraphicsDevice -> IO (TextureId AppGraphicsDevice, IO ())
-beaverTexture = $(loadTextureExp "assets/images/0_beaver.jpg")
+beaverTexture = $(loadDxtCompressedTextureExp "assets/images/0_beaver.jpg")
 
 pekaTexture :: AppGraphicsDevice -> IO (TextureId AppGraphicsDevice, IO ())
-pekaTexture = $(loadTextureExp "assets/images/0_peka0.png")
+pekaTexture = $(loadDxtCompressedTextureExp "assets/images/0_peka0.png")
