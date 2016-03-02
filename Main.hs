@@ -6,10 +6,13 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Data.IORef
-import qualified Data.Text as T
 import System.Random
 
 import Flaw.App
+import Flaw.App.PlainTexture
+import Flaw.Asset
+import Flaw.Asset.FolderAssetPack
+import Flaw.Asset.HashedAssetPack
 import Flaw.Book
 import Flaw.Graphics
 import Flaw.Graphics.Program
@@ -22,9 +25,8 @@ import Flaw.Input.Keyboard
 import Flaw.Visual.Geometry
 import Flaw.Window
 
-import Assets
-
 #if defined(ghcjs_HOST_OS)
+import qualified Data.Text as T
 import GHCJS.Types
 import GHCJS.Foreign.Callback
 import GHCJS.Marshal.Pure
@@ -253,29 +255,32 @@ main = do
 			keyboardState <- atomically initialInputState
 			mouseState <- atomically initialInputState
 
+			-- load asset pack
+			assetPack <- loadHashedAssetPack (FolderAssetPack "assetpack/") "pack.bin"
+
 			-- load field
 			Geometry
 				{ geometryVertexBuffer = vbField
 				, geometryIndexBuffer = ibField
 				, geometryIndicesCount = icField
-				} <- book bk $ fieldGeometry device
-			tField <- book bk $ fieldTexture device
+				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "field.bin")
+			tField <- book bk $ loadPlainTextureAsset device assetPack "castle.jpg"
 
 			-- load beaver
 			Geometry
 				{ geometryVertexBuffer = vbBeaver
 				, geometryIndexBuffer = ibBeaver
 				, geometryIndicesCount = icBeaver
-				} <- book bk $ beaverGeometry device
-			tBeaver <- book bk $ beaverTexture device
+				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "beaver.bin")
+			tBeaver <- book bk $ loadPlainTextureAsset device assetPack "beaver.jpg"
 
 			-- load peka
 			Geometry
 				{ geometryVertexBuffer = vbPeka
 				, geometryIndexBuffer = ibPeka
 				, geometryIndicesCount = icPeka
-				} <- book bk $ pekaGeometry device
-			tPeka <- book bk $ pekaTexture device
+				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "peka.bin")
+			tPeka <- book bk $ loadPlainTextureAsset device assetPack "peka.png"
 
 			samplerState <- book bk $ createSamplerState device defaultSamplerStateInfo
 
