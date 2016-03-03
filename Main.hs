@@ -12,7 +12,6 @@ import Flaw.App
 import Flaw.App.PlainTexture
 import Flaw.Asset
 import Flaw.Asset.FolderAssetPack
-import Flaw.Asset.HashedAssetPack
 import Flaw.Book
 import Flaw.Graphics
 import Flaw.Graphics.Program
@@ -256,7 +255,7 @@ main = do
 			mouseState <- atomically initialInputState
 
 			-- load asset pack
-			assetPack <- loadHashedAssetPack (FolderAssetPack "assetpack/") "pack.bin"
+			let assetPack = FolderAssetPack "assetpack/"
 
 			-- load field
 			Geometry
