@@ -1,0 +1,25 @@
+before_script:
+- git submodule init
+- git submodule update
+
+variables:
+  USE_GHCJS: "--compiler ghcjs-0.2.0.20151029_ghc-7.10.2"
+
+pages:
+  stage: deploy
+  script:
+  - "mkdir assetpack"
+  - "stack --no-terminal build"
+  - "stack --no-terminal build $USE_GHCJS"
+  - "mkdir public"
+  - "cp assets/index.html public/"
+  - "mv assetpack public/"
+  - "minifyjs $(stack path $USE_GHCJS --local-install-root)/bin/pekabeaver.jsexe/all.js public/assetpack/pekabeaver.min.js"
+  tags:
+  - haskellstack
+  - ghcjs
+  artifacts:
+    paths:
+    - public
+  only:
+  - master
