@@ -6,12 +6,14 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Data.IORef
+import qualified Data.Text as T
 import System.Random
 
 import Flaw.App
 import Flaw.App.PlainTexture
 import Flaw.Asset
 import Flaw.Asset.FolderAssetPack
+import Flaw.Asset.RemapAssetPack
 import Flaw.Book
 import Flaw.Graphics
 import Flaw.Graphics.Program
@@ -25,7 +27,6 @@ import Flaw.Visual.Geometry
 import Flaw.Window
 
 #if defined(ghcjs_HOST_OS)
-import qualified Data.Text as T
 import GHCJS.Types
 import GHCJS.Foreign.Callback
 import GHCJS.Marshal.Pure
@@ -255,7 +256,7 @@ main = do
 			mouseState <- atomically initialInputState
 
 			-- load asset pack
-			let assetPack = FolderAssetPack "assetpack/"
+			assetPack <- loadRemapAssetPack (FolderAssetPack "assetpack/") =<< loadAsset (FolderAssetPack "") "pack.bin" :: IO (RemapAssetPack FolderAssetPack T.Text)
 
 			-- load field
 			Geometry

@@ -8,13 +8,12 @@ variables:
 pages:
   stage: deploy
   script:
+  - "stack --no-terminal build $USE_GHCJS"
+  - "minifyjs $(stack path $USE_GHCJS --local-install-root)/bin/pekabeaver.jsexe/all.js pekabeaver.min.js"
   - "mkdir assetpack"
   - "stack --no-terminal build"
-  - "stack --no-terminal build $USE_GHCJS"
   - "mkdir public"
-  - "cp assets/index.html public/"
-  - "mv assetpack public/"
-  - "minifyjs $(stack path $USE_GHCJS --local-install-root)/bin/pekabeaver.jsexe/all.js public/assetpack/pekabeaver.min.js"
+  - "mv index.html pack.bin assetpack public/"
   tags:
   - haskellstack
   - ghcjs
