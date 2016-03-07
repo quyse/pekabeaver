@@ -8,10 +8,10 @@ variables:
 pages:
   stage: deploy
   script:
-  - "stack --no-terminal build $USE_GHCJS"
+  - "stack --no-terminal build $USE_GHCJS pekabeaver"
   - "minifyjs $(stack path $USE_GHCJS --local-install-root)/bin/pekabeaver.jsexe/all.js pekabeaver.min.js"
   - "mkdir assetpack"
-  - "stack --no-terminal build"
+  - "stack --no-terminal build pekabeaver"
   - "mkdir public"
   - "mv index.html pack.bin assetpack public/"
   tags:
