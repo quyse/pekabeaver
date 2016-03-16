@@ -4,7 +4,7 @@ packages:
 - '.'
 - location:
     git: https://github.com/quyse/flaw.git
-    commit: d61aefb8415ac6ae092f3e37b36f2e86e75e484a
+    commit: e58e489fea82f0ffa41402eb9c97428dae36ad41
   subdirs:
   - flaw-app
   - flaw-asset

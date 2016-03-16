@@ -282,7 +282,7 @@ main = do
 				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "peka.bin")
 			tPeka <- book bk $ loadPlainTextureAsset device assetPack "peka.png"
 
-			samplerState <- book bk $ createSamplerState device defaultSamplerStateInfo
+			let samplerState = nullSamplerState
 
 			-- program
 			ubsCamera <- uniformBufferSlot 0

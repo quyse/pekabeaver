@@ -34,7 +34,7 @@ do
 	addAsset "beaver_win.jpg" =<< emitPlainTextureAsset "assets/images/beaver_win.jpg"
 	addAsset "peka_win.jpg" =<< emitPlainTextureAsset "assets/images/peka_win.jpeg"
 	addAsset "styles.css" =<< emitPlainTextureAsset "assets/styles.css"
-	addAsset "pekabeaver.min.js" =<< liftM BL.toStrict (loadFile "pekabeaver.min.js")
+	addAsset "pekabeaver.min.js" =<< BL.toStrict <$> loadFile "pekabeaver.min.js"
 
 	packBytes <- runIO $ saveRemapAssetPackBuilder packBuilder
 	runIO $ B.writeFile "pack.bin" packBytes
@@ -44,7 +44,7 @@ do
 	[ stylesCss, pekabeaverJs
 		, beaverIconPng, pekaIconPng
 		, beaverWinPng, pekaWinPng
-		] <- runIO $ mapM (liftM H.toValue . getWebAssetUrl pack)
+		] <- runIO $ mapM (fmap H.toValue . getWebAssetUrl pack)
 		[ "styles.css" :: T.Text
 		, "pekabeaver.min.js"
 		, "beaver_icon.png"
