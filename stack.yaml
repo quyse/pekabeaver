@@ -4,7 +4,7 @@ packages:
 - '.'
 - location:
     git: https://github.com/quyse/flaw.git
-    commit: e58e489fea82f0ffa41402eb9c97428dae36ad41
+    commit: c6080c30bea7adaa768f1e0f6b5061847d13551e
   subdirs:
   - flaw-app
   - flaw-asset
@@ -26,14 +26,6 @@ packages:
   - flaw-sl
   - flaw-visual
   - flaw-window
-  extra-dep: true
-- location:
-    git: https://github.com/ghcjs/ghcjs-base
-    commit: 23b1311a98c7981c7b98ac7d37a6fa9456c893d5
-  extra-dep: true
-- location:
-    git: https://github.com/ghcjs/ghcjs-dom
-    commit: bbd0e70f7dae6d8d9b89b7307f2d0acf613836a7
   extra-dep: true
 
 extra-deps:
