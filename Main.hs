@@ -224,470 +224,468 @@ affineActorLookAt position@(Vec3 px py pz) target direction = r where
 		0 0 0 1
 
 main :: IO ()
-main = do
+main = handle errorHandler $ withBook $ \bk -> do
+
+	-- init app
+	(window, device, context, presenter, inputManager) <- book bk $ initApp $ appConfig
+		{ appConfigTitle = "PEKABEAVER"
+		, appConfigNeedDepthBuffer = True
+		}
+
+	setWindowMouseCursor window MouseCursorHand
+	--setWindowMouseLock window True
+
+	-- run detection of closed window
+	windowLoopVar <- newEmptyMVar
+	windowEventsChan <- atomically $ chanWindowEvents window
+	_ <- forkIO $ do
+		let loop = do
+			event <- atomically $ readTChan windowEventsChan
+			case event of
+				DestroyWindowEvent -> putMVar windowLoopVar True
+				_ -> loop
+		loop
+
+	-- run input processing thread
+	keyboardChan <- atomically $ chanInputEvents inputManager
+	mouseChan <- atomically $ chanInputEvents inputManager
+	-- initial input states
+	keyboardState <- atomically initialInputState
+	mouseState <- atomically initialInputState
+
+	-- load asset pack
+	assetPack <- loadRemapAssetPack (FolderAssetPack "assetpack/") =<< loadAsset (FolderAssetPack "") "pack.bin" :: IO (RemapAssetPack FolderAssetPack T.Text)
+
+	-- load field
+	Geometry
+		{ geometryVertexBuffer = vbField
+		, geometryIndexBuffer = ibField
+		, geometryIndicesCount = icField
+		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "field.bin")
+	tField <- book bk $ loadPlainTextureAsset device assetPack "castle.jpg"
+
+	-- load beaver
+	Geometry
+		{ geometryVertexBuffer = vbBeaver
+		, geometryIndexBuffer = ibBeaver
+		, geometryIndicesCount = icBeaver
+		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "beaver.bin")
+	tBeaver <- book bk $ loadPlainTextureAsset device assetPack "beaver.jpg"
+
+	-- load peka
+	Geometry
+		{ geometryVertexBuffer = vbPeka
+		, geometryIndexBuffer = ibPeka
+		, geometryIndicesCount = icPeka
+		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "peka.bin")
+	tPeka <- book bk $ loadPlainTextureAsset device assetPack "peka.png"
+
+	let samplerState = nullSamplerState
+
+	-- program
+	ubsCamera <- uniformBufferSlot 0
+	uViewProj <- uniform ubsCamera
+	uCameraPosition <- uniform ubsCamera
+	ubsLight <- uniformBufferSlot 1
+	uLightPosition <- uniform ubsLight
+	--ubsMaterial <- uniformBufferSlot 2
+	--uDiffuseColor <- uniform ubsMaterial
+	ubsObject <- uniformBufferSlot 3
+	uWorld <- uniform ubsObject
+	usCamera <- book bk $ createUniformStorage device ubsCamera
+	usLight <- book bk $ createUniformStorage device ubsLight
+	--usMaterial <- book bk $ createUniformStorage device ubsMaterial
+	usObject <- book bk $ createUniformStorage device ubsObject
+	program <- book bk $ createProgram device $ do
+		aPosition <- attribute 0 0 0 (AttributeVec3 AttributeFloat32)
+		aNormal <- attribute 0 12 0 (AttributeVec3 AttributeFloat32)
+		aTexcoord <- attribute 0 24 0 (AttributeVec2 AttributeFloat32)
+		worldPosition <- temp $ mul uWorld $ cvec31 aPosition (constf 1)
+		worldNormal <- temp $ mul uWorld $ cvec31 aNormal (constf 0)
+		rasterize (mul uViewProj worldPosition) $ do
+			let toLight = normalize $ (xyz__ worldPosition) - uLightPosition
+			--diffuse <- temp $ max_ 0 $ dot toLight $ xyz__ worldNormal
+			diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ normalize $ xyz__ worldNormal)
+			diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
+			colorTarget 0 $ cvec31 (diffuseColor * vecFromScalar diffuse) (constf 1)
+
 	let
-		handler :: SomeException -> IO ()
-		handler = putStrLn . show
-	handle handler $ do
-		withBook $ \bk -> do
-
-			-- init app
-			(window, device, context, presenter, inputManager) <- book bk $ initApp $ appConfig
-				{ appConfigTitle = "PEKABEAVER"
-				, appConfigNeedDepthBuffer = True
-				}
-
-			-- run detection of closed window
-			windowLoopVar <- newEmptyMVar
-			windowEventsChan <- atomically $ chanWindowEvents window
-			_ <- forkIO $ do
-				let loop = do
-					event <- atomically $ readTChan windowEventsChan
-					case event of
-						DestroyWindowEvent -> putMVar windowLoopVar True
-						_ -> loop
-				loop
-
-			-- run input processing thread
-			keyboardChan <- atomically $ chanInputEvents inputManager
-			mouseChan <- atomically $ chanInputEvents inputManager
-			-- initial input states
-			keyboardState <- atomically initialInputState
-			mouseState <- atomically initialInputState
-
-			-- load asset pack
-			assetPack <- loadRemapAssetPack (FolderAssetPack "assetpack/") =<< loadAsset (FolderAssetPack "") "pack.bin" :: IO (RemapAssetPack FolderAssetPack T.Text)
-
-			-- load field
-			Geometry
-				{ geometryVertexBuffer = vbField
-				, geometryIndexBuffer = ibField
-				, geometryIndicesCount = icField
-				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "field.bin")
-			tField <- book bk $ loadPlainTextureAsset device assetPack "castle.jpg"
-
-			-- load beaver
-			Geometry
-				{ geometryVertexBuffer = vbBeaver
-				, geometryIndexBuffer = ibBeaver
-				, geometryIndicesCount = icBeaver
-				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "beaver.bin")
-			tBeaver <- book bk $ loadPlainTextureAsset device assetPack "beaver.jpg"
-
-			-- load peka
-			Geometry
-				{ geometryVertexBuffer = vbPeka
-				, geometryIndexBuffer = ibPeka
-				, geometryIndicesCount = icPeka
-				} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "peka.bin")
-			tPeka <- book bk $ loadPlainTextureAsset device assetPack "peka.png"
-
-			let samplerState = nullSamplerState
-
-			-- program
-			ubsCamera <- uniformBufferSlot 0
-			uViewProj <- uniform ubsCamera
-			uCameraPosition <- uniform ubsCamera
-			ubsLight <- uniformBufferSlot 1
-			uLightPosition <- uniform ubsLight
-			--ubsMaterial <- uniformBufferSlot 2
-			--uDiffuseColor <- uniform ubsMaterial
-			ubsObject <- uniformBufferSlot 3
-			uWorld <- uniform ubsObject
-			usCamera <- book bk $ createUniformStorage device ubsCamera
-			usLight <- book bk $ createUniformStorage device ubsLight
-			--usMaterial <- book bk $ createUniformStorage device ubsMaterial
-			usObject <- book bk $ createUniformStorage device ubsObject
-			program <- book bk $ createProgram device $ do
-				aPosition <- attribute 0 0 0 (AttributeVec3 AttributeFloat32)
-				aNormal <- attribute 0 12 0 (AttributeVec3 AttributeFloat32)
-				aTexcoord <- attribute 0 24 0 (AttributeVec2 AttributeFloat32)
-				worldPosition <- temp $ mul uWorld $ cvec31 aPosition (constf 1)
-				worldNormal <- temp $ mul uWorld $ cvec31 aNormal (constf 0)
-				rasterize (mul uViewProj worldPosition) $ do
-					let toLight = normalize $ (xyz__ worldPosition) - uLightPosition
-					--diffuse <- temp $ max_ 0 $ dot toLight $ xyz__ worldNormal
-					diffuse <- temp $ min_ (constf 1) $ constf 0.5 + (abs $ dot toLight $ normalize $ xyz__ worldNormal)
-					diffuseColor <- temp $ sample (sampler2D3f 0) aTexcoord
-					colorTarget 0 $ cvec31 (diffuseColor * vecFromScalar diffuse) (constf 1)
-
-			let
-				gameStep :: Float -> StateT GameState IO ()
-				gameStep frameTime = do
-					-- check exit
+		gameStep :: Float -> StateT GameState IO ()
+		gameStep frameTime = do
+			-- check exit
 #if !defined(ghcjs_HOST_OS)
-					loop <- liftIO $ tryTakeMVar windowLoopVar
-					case loop of
-						Just True -> liftIO $ exitApp
-						_ -> return ()
+			loop <- liftIO $ tryTakeMVar windowLoopVar
+			case loop of
+				Just True -> liftIO $ exitApp
+				_ -> return ()
 #endif
 
-					cameraPosition <- do
-						s <- get
-						let alpha = gsCameraAlpha s
-						let beta = gsCameraBeta s
-						let distance = gsCameraDistance s
-						return $ Vec3 (distance * (cos alpha * cos beta)) (distance * (sin alpha * cos beta)) (distance * sin beta)
+			cameraPosition <- do
+				s <- get
+				let alpha = gsCameraAlpha s
+				let beta = gsCameraBeta s
+				let distance = gsCameraDistance s
+				return $ Vec3 (distance * (cos alpha * cos beta)) (distance * (sin alpha * cos beta)) (distance * sin beta)
 
-					rs <- get
-					(viewProj, viewportWidth, viewportHeight) <- liftIO $ render context $ do
-						present presenter $ do
-							renderClearColor 0 (Vec4 0.5 0.5 0.5 1)
-							renderClearDepth 1
-							renderProgram program
+			rs <- get
+			(viewProj, viewportWidth, viewportHeight) <- liftIO $ render context $ do
+				present presenter $ do
+					renderClearColor 0 (Vec4 0.5 0.5 0.5 1)
+					renderClearDepth 1
+					renderProgram program
 
-							Vec4 viewportLeft viewportTop viewportRight viewportBottom <- renderGetViewport
-							let viewportWidth = viewportRight - viewportLeft
-							let viewportHeight = viewportBottom - viewportTop
-							let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
+					Vec4 viewportLeft viewportTop viewportRight viewportBottom <- renderGetViewport
+					let viewportWidth = viewportRight - viewportLeft
+					let viewportHeight = viewportBottom - viewportTop
+					let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
 
-							let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
-							let proj = projectionPerspectiveFov (pi / 4) aspect 0.01 (50 :: Float)
-							let viewProj = mul proj view
-							renderUniform usCamera uViewProj viewProj
-							renderUniform usCamera uCameraPosition cameraPosition
-							renderUploadUniformStorage usCamera
-							renderUniformStorage usCamera
+					let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
+					let proj = projectionPerspectiveFov (pi / 4) aspect 0.01 (50 :: Float)
+					let viewProj = mul proj view
+					renderUniform usCamera uViewProj viewProj
+					renderUniform usCamera uCameraPosition cameraPosition
+					renderUploadUniformStorage usCamera
+					renderUniformStorage usCamera
 
-							renderUniform usLight uLightPosition $ let
-								angle = gsLightAngle rs
-								in Vec3 (2 * cos angle) (2 * sin angle) 2
-							renderUploadUniformStorage usLight
-							renderUniformStorage usLight
+					renderUniform usLight uLightPosition $ let
+						angle = gsLightAngle rs
+						in Vec3 (2 * cos angle) (2 * sin angle) 2
+					renderUploadUniformStorage usLight
+					renderUniformStorage usLight
 
-							--renderUniform usMaterial uDiffuseColor $ Vec3 1 0 0
-							--renderUploadUniformStorage usMaterial
-							--renderUniformStorage usMaterial
+					--renderUniform usMaterial uDiffuseColor $ Vec3 1 0 0
+					--renderUploadUniformStorage usMaterial
+					--renderUniformStorage usMaterial
 
-							-- render field
-							renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Float3)
-							renderUploadUniformStorage usObject
-							renderUniformStorage usObject
-							renderVertexBuffer 0 vbField
-							renderIndexBuffer ibField
-							renderSampler 0 tField samplerState
-							renderDraw icField
+					-- render field
+					renderUniform usObject uWorld $ affineTranslation ((Vec3 0 0 0) :: Float3)
+					renderUploadUniformStorage usObject
+					renderUniformStorage usObject
+					renderVertexBuffer 0 vbField
+					renderIndexBuffer ibField
+					renderSampler 0 tField samplerState
+					renderDraw icField
 
-							-- render actors
-							forM_ (gsActors rs) $ \actor@Actor
-								{ actorType = at
-								, actorState = as
-								, actorFinishPosition = Vec2 fx fy
-								, actorTime = t
-								, actorTotalTime = tt
-								, actorAngle = aa
-								} -> do
-								let (vb, ib, ic, tex) = case at of
-									Peka -> (vbPeka, ibPeka, icPeka, tPeka)
-									Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
-								let k = t / tt
-								let position = calcActorPosition actor
-								let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
-								let world = case as of
-									ActorFlying _ -> mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
-									ActorRunning -> if at == Peka then mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
-									ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 0.05 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
-									ActorExplode ->
-										--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
-										mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
-									ActorWinning -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * actorWinningOffset) $ affineScaling $ vecFromScalar $ 1 - k + actorWinningScale * k
-								renderUniform usObject uWorld world
-								renderUploadUniformStorage usObject
-								renderUniformStorage usObject
-								renderVertexBuffer 0 vb
-								renderIndexBuffer ib
-								renderSampler 0 tex samplerState
-								renderDraw ic
-
-							return (viewProj, viewportWidth, viewportHeight)
-
-					-- process input
-					do
-						let getMousePoint = do
-							(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
-							let frontPoint = getFrontScreenPoint viewProj $ Vec3
-								((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
-								(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
-								0
-							return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
-
-						let
-							processKeyboard = readTChan keyboardChan >>= \keyboardEvent -> return $ do
-								case keyboardEvent of
-									KeyDownEvent KeyEscape -> liftIO $ putMVar windowLoopVar True
-									_ -> return ()
-								liftIO $ atomically $ applyInputEvent keyboardState keyboardEvent
-								processEvent
-							processMouse = readTChan mouseChan >>= \mouseEvent -> return $ do
-								case mouseEvent of
-									MouseDownEvent LeftMouseButton -> do
-										cursor <- liftIO $ atomically $ getMouseCursor mouseState
-										state $ \s -> ((), s
-											{ gsFirstCursor = Just (cursor, cursor)
-											})
-									MouseUpEvent LeftMouseButton -> do
-										(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
-										s1 <- get
-										case gsFirstCursor s1 of
-											Just ((firstCursorX, firstCursorY), _) -> do
-												if (abs $ cursorX - firstCursorX) < moveClickThreshold && (abs $ cursorY - firstCursorY) < moveClickThreshold then do
-													(Vec3 fx fy _) <- getMousePoint
-													state $ \s -> ((), s
-														{ gsUserSpawn = Just $ Vec2 fx fy
-														})
-												else return ()
-												state $ \s -> ((), s
-													{ gsFirstCursor = Nothing
-													})
-											Nothing -> return ()
-									CursorMoveEvent cursorX cursorY -> do
-										s <- get
-										case gsFirstCursor s of
-											Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
-												if (abs $ cursorX - firstCursorX) >= moveClickThreshold || (abs $ cursorY - firstCursorY) >= moveClickThreshold then do
-													put $ s
-														{ gsCameraAlpha = gsCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
-														, gsCameraBeta = gsCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
-														, gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
-														}
-												else
-													put $ s
-														{ gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
-														}
-											Nothing -> return ()
-									RawMouseMoveEvent _dx _dy dz -> state $ \s -> ((), s
-										{ gsCameraDistance = max 2.5 $ min 12.7 $ dz * (-0.0025) + gsCameraDistance s
-										})
-									_ -> return ()
-								liftIO $ atomically $ applyInputEvent mouseState mouseEvent
-								processEvent
-							processEvent = do
-								action <- liftIO $ atomically $ orElse (orElse processKeyboard processMouse) (return $ return ())
-								action
-						processEvent
-
-					-- process camera rotation
-					do
-						up <- liftIO $ atomically $ getKeyState keyboardState KeyUp
-						down <- liftIO $ atomically $ getKeyState keyboardState KeyDown
-						left <- liftIO $ atomically $ getKeyState keyboardState KeyLeft
-						right <- liftIO $ atomically $ getKeyState keyboardState KeyRight
-						state $ \s -> ((), s
-							{ gsCameraAlpha = gsCameraAlpha s + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
-							, gsCameraBeta = max 0.1 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
-							})
-
-					-- step actors
-					let stepActor actor@Actor
-						{ actorState = as
-						, actorFinishPosition = f
-						, actorType = at
+					-- render actors
+					forM_ (gsActors rs) $ \actor@Actor
+						{ actorType = at
+						, actorState = as
+						, actorFinishPosition = Vec2 fx fy
 						, actorTime = t
 						, actorTotalTime = tt
-						} = do
-						case as of
-							ActorFlying _ -> if t >= tt then do
-								let finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
+						, actorAngle = aa
+						} -> do
+						let (vb, ib, ic, tex) = case at of
+							Peka -> (vbPeka, ibPeka, icPeka, tPeka)
+							Beaver -> (vbBeaver, ibBeaver, icBeaver, tBeaver)
+						let k = t / tt
+						let position = calcActorPosition actor
+						let translation = affineActorLookAt position (Vec3 fx fy actorOffset) (Vec3 0 0 1)
+						let world = case as of
+							ActorFlying _ -> mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) $ k * pi * 2
+							ActorRunning -> if at == Peka then mul translation $ affineFromQuat $ affineAxisRotation (Vec3 (-1) 0 0) aa else translation
+							ActorDead -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ 0.05 - actorOffset) $ affineScaling (Vec3 1.5 1.5 (0.1 :: Float))
+							ActorExplode ->
+								--mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * 10) $ affineScaling $ vecFromScalar $ 1 + k * 0.5
+								mul translation $ affineScaling $ Vec3 1 (1 * (1 - k) + 0.1 * k) 1
+							ActorWinning -> mul translation $ mul (affineTranslation $ Vec3 0 0 $ k * actorWinningOffset) $ affineScaling $ vecFromScalar $ 1 - k + actorWinningScale * k
+						renderUniform usObject uWorld world
+						renderUploadUniformStorage usObject
+						renderUniformStorage usObject
+						renderVertexBuffer 0 vb
+						renderIndexBuffer ib
+						renderSampler 0 tex samplerState
+						renderDraw ic
+
+					return (viewProj, viewportWidth, viewportHeight)
+
+			-- process input
+			do
+				let getMousePoint = do
+					(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
+					let frontPoint = getFrontScreenPoint viewProj $ Vec3
+						((fromIntegral cursorX) / (fromIntegral viewportWidth) * 2 - 1)
+						(1 - (fromIntegral cursorY) / (fromIntegral viewportHeight) * 2)
+						0
+					return $ intersectRay cameraPosition (normalize (frontPoint - cameraPosition)) (Vec3 0 0 1) 0
+
+				let
+					processKeyboard = readTChan keyboardChan >>= \keyboardEvent -> return $ do
+						case keyboardEvent of
+							KeyDownEvent KeyEscape -> liftIO $ putMVar windowLoopVar True
+							_ -> return ()
+						liftIO $ atomically $ applyInputEvent keyboardState keyboardEvent
+						processEvent
+					processMouse = readTChan mouseChan >>= \mouseEvent -> return $ do
+						case mouseEvent of
+							MouseDownEvent LeftMouseButton -> do
+								cursor <- liftIO $ atomically $ getMouseCursor mouseState
 								state $ \s -> ((), s
-									{ gsDamages = (Damage at f) : gsDamages s
+									{ gsFirstCursor = Just (cursor, cursor)
 									})
+							MouseUpEvent LeftMouseButton -> do
+								(cursorX, cursorY) <- liftIO $ atomically $ getMouseCursor mouseState
+								s1 <- get
+								case gsFirstCursor s1 of
+									Just ((firstCursorX, firstCursorY), _) -> do
+										if (abs $ cursorX - firstCursorX) < moveClickThreshold && (abs $ cursorY - firstCursorY) < moveClickThreshold then do
+											(Vec3 fx fy _) <- getMousePoint
+											state $ \s -> ((), s
+												{ gsUserSpawn = Just $ Vec2 fx fy
+												})
+										else return ()
+										state $ \s -> ((), s
+											{ gsFirstCursor = Nothing
+											})
+									Nothing -> return ()
+							CursorMoveEvent cursorX cursorY -> do
+								s <- get
+								case gsFirstCursor s of
+									Just (firstCursor@(firstCursorX, firstCursorY), (moveCursorX, moveCursorY)) -> do
+										if (abs $ cursorX - firstCursorX) >= moveClickThreshold || (abs $ cursorY - firstCursorY) >= moveClickThreshold then do
+											put $ s
+												{ gsCameraAlpha = gsCameraAlpha s - (fromIntegral $ cursorX - moveCursorX) * 0.005
+												, gsCameraBeta = gsCameraBeta s + (fromIntegral $ cursorY - moveCursorY) * 0.01
+												, gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
+												}
+										else
+											put $ s
+												{ gsFirstCursor = Just (firstCursor, (cursorX, cursorY))
+												}
+									Nothing -> return ()
+							RawMouseMoveEvent _dx _dy dz -> state $ \s -> ((), s
+								{ gsCameraDistance = max 2.5 $ min 12.7 $ dz * (-0.0025) + gsCameraDistance s
+								})
+							_ -> return ()
+						liftIO $ atomically $ applyInputEvent mouseState mouseEvent
+						processEvent
+					processEvent = do
+						action <- liftIO $ atomically $ orElse (orElse processKeyboard processMouse) (return $ return ())
+						action
+				processEvent
+
+			-- process camera rotation
+			do
+				up <- liftIO $ atomically $ getKeyState keyboardState KeyUp
+				down <- liftIO $ atomically $ getKeyState keyboardState KeyDown
+				left <- liftIO $ atomically $ getKeyState keyboardState KeyLeft
+				right <- liftIO $ atomically $ getKeyState keyboardState KeyRight
+				state $ \s -> ((), s
+					{ gsCameraAlpha = gsCameraAlpha s + ((if right then 1 else 0) - (if left then 1 else 0)) * frameTime
+					, gsCameraBeta = max 0.1 $ min 1.5 $ gsCameraBeta s + ((if up then 1 else 0) - (if down then 1 else 0)) * frameTime
+					})
+
+			-- step actors
+			let stepActor actor@Actor
+				{ actorState = as
+				, actorFinishPosition = f
+				, actorType = at
+				, actorTime = t
+				, actorTotalTime = tt
+				} = do
+				case as of
+					ActorFlying _ -> if t >= tt then do
+						let finishPosition = Vec2 (x_ f) $ castleLine $ enemyActor at
+						state $ \s -> ((), s
+							{ gsDamages = (Damage at f) : gsDamages s
+							})
+						return [actor
+							{ actorTime = 0
+							, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
+							, actorStartPosition = f
+							, actorFinishPosition = finishPosition
+							, actorState = ActorRunning
+							, actorAngle = 0
+							}]
+						else return [actor
+								{ actorTime = t + frameTime
+								}]
+					ActorRunning -> do
+						if t >= tt then do
+							let finishPosition = castlePosition $ enemyActor at
+							let len = norm $ finishPosition - f
+							if len < 0.25 then do
+								state $ \s -> ((), case at of
+									Beaver -> s { gsPekaLives = gsPekaLives s - 1 }
+									Peka -> s { gsBeaverLives = gsBeaverLives s - 1 }
+									)
 								return [actor
 									{ actorTime = 0
-									, actorTotalTime = norm (finishPosition - f) / actorGroundSpeed
-									, actorStartPosition = f
+									, actorTotalTime = actorWinningTime
+									, actorState = ActorWinning
+									, actorStartPosition = finishPosition
 									, actorFinishPosition = finishPosition
-									, actorState = ActorRunning
-									, actorAngle = 0
 									}]
-								else return [actor
-										{ actorTime = t + frameTime
-										}]
-							ActorRunning -> do
-								if t >= tt then do
-									let finishPosition = castlePosition $ enemyActor at
-									let len = norm $ finishPosition - f
-									if len < 0.25 then do
-										state $ \s -> ((), case at of
-											Beaver -> s { gsPekaLives = gsPekaLives s - 1 }
-											Peka -> s { gsBeaverLives = gsBeaverLives s - 1 }
-											)
-										return [actor
-											{ actorTime = 0
-											, actorTotalTime = actorWinningTime
-											, actorState = ActorWinning
-											, actorStartPosition = finishPosition
-											, actorFinishPosition = finishPosition
-											}]
-									else return [actor
-										{ actorTime = 0
-										, actorTotalTime = len / actorGroundSpeed
-										, actorStartPosition = f
-										, actorFinishPosition = finishPosition
-										, actorState = ActorRunning
-										, actorAngle = 0
-										}]
-								else return [actor
-									{ actorTime = t + frameTime
-									, actorAngle = actorAngle actor + actorAngleSpeed * frameTime
-									}]
-							ActorDead -> do
-								if t >= tt then return []
-								else return [actor
-									{ actorTime = t + frameTime
-									}]
-							ActorExplode -> do
-								if t >= tt then return []
-								else return [actor
-									{ actorTime = t + frameTime
-									}]
-							ActorWinning -> do
-								if t >= tt then return []
-								else return [actor
-									{ actorTime = t + frameTime
-									}]
+							else return [actor
+								{ actorTime = 0
+								, actorTotalTime = len / actorGroundSpeed
+								, actorStartPosition = f
+								, actorFinishPosition = finishPosition
+								, actorState = ActorRunning
+								, actorAngle = 0
+								}]
+						else return [actor
+							{ actorTime = t + frameTime
+							, actorAngle = actorAngle actor + actorAngleSpeed * frameTime
+							}]
+					ActorDead -> do
+						if t >= tt then return []
+						else return [actor
+							{ actorTime = t + frameTime
+							}]
+					ActorExplode -> do
+						if t >= tt then return []
+						else return [actor
+							{ actorTime = t + frameTime
+							}]
+					ActorWinning -> do
+						if t >= tt then return []
+						else return [actor
+							{ actorTime = t + frameTime
+							}]
 
-					do
-						s1 <- get
-						newActors <- liftM concat $ mapM stepActor $ gsActors s1
-						state $ \s -> ((), s
-							{ gsActors = newActors
-							})
+			do
+				s1 <- get
+				newActors <- liftM concat $ mapM stepActor $ gsActors s1
+				state $ \s -> ((), s
+					{ gsActors = newActors
+					})
 
-					-- apply damages
-					do
-						s <- get
-						let applyDamages (Damage eat ep) actors = map (\actor@Actor
-							{ actorType = at
-							, actorState = as
-							} -> let
-								Vec3 px py _pz = calcActorPosition actor
-								in
-									if at == eat || as == ActorDead || norm (ep - (Vec2 px py)) > 0.5 then actor
-									else actor
-										{ actorState = ActorDead
-										, actorTime = 0
-										, actorTotalTime = actorDeadTime
-										, actorStartPosition = Vec2 px py
-										}) actors
-						put s
-							{ gsActors = foldr applyDamages (gsActors s) $ gsDamages s
-							, gsDamages = []
+			-- apply damages
+			do
+				s <- get
+				let applyDamages (Damage eat ep) actors = map (\actor@Actor
+					{ actorType = at
+					, actorState = as
+					} -> let
+						Vec3 px py _pz = calcActorPosition actor
+						in
+							if at == eat || as == ActorDead || norm (ep - (Vec2 px py)) > 0.5 then actor
+							else actor
+								{ actorState = ActorDead
+								, actorTime = 0
+								, actorTotalTime = actorDeadTime
+								, actorStartPosition = Vec2 px py
+								}) actors
+				put s
+					{ gsActors = foldr applyDamages (gsActors s) $ gsDamages s
+					, gsDamages = []
+					}
+
+			-- annigilate ground actors
+			state $ \s -> let actors = gsActors s in ((), s
+				{ gsActors = map (\actor -> let
+					p@(Vec3 px py _pz) = calcActorPosition actor
+					at = actorType actor
+					keep = actorState actor /= ActorRunning || all (\actor2 -> let
+						p2 = calcActorPosition actor2
+						at2 = actorType actor2
+						as2 = actorState actor2
+						in at == at2 || as2 /= ActorRunning || norm (p - p2) > 0.25
+						) actors
+					in if keep then actor
+						else let startPosition = Vec2 px py in actor
+							{ actorState = ActorExplode
+							, actorTime = 0
+							, actorTotalTime = actorExplodeTime
+							, actorStartPosition = startPosition
+							, actorFinishPosition = startPosition + normalize (actorFinishPosition actor - startPosition) * vecFromScalar actorExplodeDistance
 							}
+					) actors
+				})
 
-					-- annigilate ground actors
-					state $ \s -> let actors = gsActors s in ((), s
-						{ gsActors = map (\actor -> let
-							p@(Vec3 px py _pz) = calcActorPosition actor
-							at = actorType actor
-							keep = actorState actor /= ActorRunning || all (\actor2 -> let
-								p2 = calcActorPosition actor2
-								at2 = actorType actor2
-								as2 = actorState actor2
-								in at == at2 || as2 /= ActorRunning || norm (p - p2) > 0.25
-								) actors
-							in if keep then actor
-								else let startPosition = Vec2 px py in actor
-									{ actorState = ActorExplode
-									, actorTime = 0
-									, actorTotalTime = actorExplodeTime
-									, actorStartPosition = startPosition
-									, actorFinishPosition = startPosition + normalize (actorFinishPosition actor - startPosition) * vecFromScalar actorExplodeDistance
-									}
-							) actors
-						})
-
-					-- process user's gun
-					do
-						s1 <- get
-						if gsPhase s1 == GameBattle && gunStateTime (gsUserGun s1) <= 0 then do
-							case gsUserSpawn s1 of
-								Just position -> do
-									let at = gsUserActorType s1
-									case spawnActor at (castlePosition at) position of
-										Just actor -> state $ \s -> ((), s
-											{ gsActors = actor : gsActors s
-											, gsUserGun = (gsUserGun s)
-												{ gunStateTime = gunCoolDown
-												}
-											})
-										Nothing -> return ()
-									state $ \s -> ((), s
-										{ gsUserSpawn = Nothing
-										})
-								Nothing -> return ()
-						else return ()
-
-					-- process computer's gun
-					do
-						s <- get
-						if gsPhase s == GameBattle && gunStateTime (gsComputerGun s) <= 0 then do
-							let minx = -fieldWidth
-							let maxx = fieldWidth
-							let at = enemyActor $ gsUserActorType s
-							let cl = castleLine at
-							let miny = if cl > 0 then 0 else cl
-							let maxy = if cl > 0 then cl else 0
-							x <- liftIO $ getStdRandom $ randomR (minx, maxx)
-							y <- liftIO $ getStdRandom $ randomR (miny, maxy)
-							case spawnActor at (castlePosition at) (Vec2 x y) of
-								Just actor -> put s
+			-- process user's gun
+			do
+				s1 <- get
+				if gsPhase s1 == GameBattle && gunStateTime (gsUserGun s1) <= 0 then do
+					case gsUserSpawn s1 of
+						Just position -> do
+							let at = gsUserActorType s1
+							case spawnActor at (castlePosition at) position of
+								Just actor -> state $ \s -> ((), s
 									{ gsActors = actor : gsActors s
-									, gsComputerGun = (gsComputerGun s)
+									, gsUserGun = (gsUserGun s)
 										{ gunStateTime = gunCoolDown
 										}
-									}
+									})
 								Nothing -> return ()
-						else return ()
+							state $ \s -> ((), s
+								{ gsUserSpawn = Nothing
+								})
+						Nothing -> return ()
+				else return ()
 
-					-- process gun cooldowns
-					let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
-					state $ \s -> ((), s
-						{ gsUserGun = processGun $ gsUserGun s
-						, gsComputerGun = processGun $ gsComputerGun s
-						})
+			-- process computer's gun
+			do
+				s <- get
+				if gsPhase s == GameBattle && gunStateTime (gsComputerGun s) <= 0 then do
+					let minx = -fieldWidth
+					let maxx = fieldWidth
+					let at = enemyActor $ gsUserActorType s
+					let cl = castleLine at
+					let miny = if cl > 0 then 0 else cl
+					let maxy = if cl > 0 then cl else 0
+					x <- liftIO $ getStdRandom $ randomR (minx, maxx)
+					y <- liftIO $ getStdRandom $ randomR (miny, maxy)
+					case spawnActor at (castlePosition at) (Vec2 x y) of
+						Just actor -> put s
+							{ gsActors = actor : gsActors s
+							, gsComputerGun = (gsComputerGun s)
+								{ gunStateTime = gunCoolDown
+								}
+							}
+						Nothing -> return ()
+				else return ()
 
-					-- step light
-					state $ \s -> ((), s
-						{ gsLightAngle = gsLightAngle s + frameTime * 3
-						})
+			-- process gun cooldowns
+			let processGun gs = gs { gunStateTime = gunStateTime gs - frameTime }
+			state $ \s -> ((), s
+				{ gsUserGun = processGun $ gsUserGun s
+				, gsComputerGun = processGun $ gsComputerGun s
+				})
+
+			-- step light
+			state $ \s -> ((), s
+				{ gsLightAngle = gsLightAngle s + frameTime * 3
+				})
 
 #if defined(ghcjs_HOST_OS)
 
-					-- update lives
-					get >>= \s -> liftIO $ do
-						if gsPhase s == GameBattle then do
-							js_setStyleWidth (pToJSVal $ T.pack "beaver_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
-							js_setStyleWidth (pToJSVal $ T.pack "peka_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
-						else return ()
+			-- update lives
+			get >>= \s -> liftIO $ do
+				if gsPhase s == GameBattle then do
+					js_setStyleWidth (pToJSVal $ T.pack "beaver_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsBeaverLives s) * (100 :: Float) / fromIntegral livesAmount
+					js_setStyleWidth (pToJSVal $ T.pack "peka_lives") $ pToJSVal $ T.pack $ show $ (fromIntegral $ gsPekaLives s) * (100 :: Float) / fromIntegral livesAmount
+				else return ()
 
-					-- check end
-					get >>= \s -> do
-						if gsPhase s == GameBattle then do
-							let beaverLives = gsBeaverLives s
-							let pekaLives = gsPekaLives s
-							if beaverLives <= 0 || pekaLives <= 0 then do
-								put s { gsPhase = GameFinish }
-								let beaverWon = beaverLives > 0
-								let userWon = beaverWon == (gsUserActorType s == Beaver)
-								liftIO $ js_end (pToJSVal $ T.pack $ if beaverWon then "beaver" else "peka") $ pToJSVal $ T.pack $ if userWon then "You won!" else "You lose!"
-							else return ()
-						else return ()
+			-- check end
+			get >>= \s -> do
+				if gsPhase s == GameBattle then do
+					let beaverLives = gsBeaverLives s
+					let pekaLives = gsPekaLives s
+					if beaverLives <= 0 || pekaLives <= 0 then do
+						put s { gsPhase = GameFinish }
+						let beaverWon = beaverLives > 0
+						let userWon = beaverWon == (gsUserActorType s == Beaver)
+						liftIO $ js_end (pToJSVal $ T.pack $ if beaverWon then "beaver" else "peka") $ pToJSVal $ T.pack $ if userWon then "You won!" else "You lose!"
+					else return ()
+				else return ()
 
-			-- register start functions
-			gameStateVar <- liftIO $ newEmptyMVar
-			liftIO $ do
-				let start at alpha = do
-					js_start
-					putMVar gameStateVar initialGameState
-						{ gsUserActorType = at
-						, gsCameraAlpha = alpha
-						}
-				beaverStart <- syncCallback ThrowWouldBlock $ start Beaver $ (-pi) / 2
-				pekaStart <- syncCallback ThrowWouldBlock $ start Peka $ pi / 2
-				js_registerStart beaverStart pekaStart
+	-- register start functions
+	gameStateVar <- liftIO $ newEmptyMVar
+	do
+		let start at alpha = do
+			js_start
+			putMVar gameStateVar initialGameState
+				{ gsUserActorType = at
+				, gsCameraAlpha = alpha
+				}
+		beaverStart <- syncCallback ThrowWouldBlock $ start Beaver $ (-pi) / 2
+		pekaStart <- syncCallback ThrowWouldBlock $ start Peka $ pi / 2
+		js_registerStart beaverStart pekaStart
 
-			-- main loop
-			liftIO $ runApp $ \frameTime -> modifyMVar_ gameStateVar $ execStateT (gameStep frameTime)
+	-- main loop
+	runApp $ \frameTime -> modifyMVar_ gameStateVar $ execStateT (gameStep frameTime)
 
 foreign import javascript unsafe "document.getElementById($1).style.width=$2+'%'" js_setStyleWidth :: JSVal -> JSVal -> IO ()
 foreign import javascript unsafe "document.getElementById('start-beaver').addEventListener('click', $1, false);document.getElementById('start-peka').addEventListener('click', $2, false);" js_registerStart :: Callback (IO ()) -> Callback (IO ()) -> IO ()
@@ -696,12 +694,15 @@ foreign import javascript unsafe "document.getElementById('end-'+$1).style.displ
 
 #else
 
-			-- main loop
-			liftIO $ do
-				gameStateRef <- newIORef $ initialGameState
-					{ gsUserActorType = Peka
-					, gsCameraAlpha = pi / 2
-					}
-				runApp $ \frameTime -> writeIORef gameStateRef =<< execStateT (gameStep frameTime) =<< readIORef gameStateRef
+	-- main loop
+	do
+		gameStateRef <- newIORef $ initialGameState
+			{ gsUserActorType = Peka
+			, gsCameraAlpha = pi / 2
+			}
+		runApp $ \frameTime -> writeIORef gameStateRef =<< execStateT (gameStep frameTime) =<< readIORef gameStateRef
 
 #endif
+
+errorHandler :: SomeException -> IO ()
+errorHandler = putStrLn . show

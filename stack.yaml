@@ -1,10 +1,10 @@
-resolver: lts-5.5
+resolver: lts-5.9
 
 packages:
 - '.'
 - location:
     git: https://github.com/quyse/flaw.git
-    commit: c6080c30bea7adaa768f1e0f6b5061847d13551e
+    commit: 351226df5957229d981f53c8c9cf7f1666b6c3da
   subdirs:
   - flaw-app
   - flaw-asset
@@ -18,9 +18,9 @@ packages:
   - flaw-font
   - flaw-game
   - flaw-gl
-  - flaw-glsl
   - flaw-graphics
   - flaw-input
+  - flaw-js
   - flaw-math
   - flaw-sdl
   - flaw-sl
