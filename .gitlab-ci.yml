@@ -3,7 +3,7 @@ before_script:
 - git submodule update
 
 variables:
-  USE_GHCJS: "--compiler ghcjs-0.2.0_ghc-7.10.3"
+  USE_GHCJS: "--compiler ghcjs-0.2.0_ghc-8.0.1"
 
 pages:
   stage: deploy

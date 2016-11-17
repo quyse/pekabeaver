@@ -1,0 +1,3 @@
+[submodule "deps/flaw"]
+	path = deps/flaw
+	url = https://github.com/quyse/flaw.git

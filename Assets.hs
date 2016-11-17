@@ -2,22 +2,23 @@
 
 module Assets () where
 
-import Control.Monad
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Serialize as S
+import Data.Serialize.Text()
 import qualified Data.Text as T
 import Language.Haskell.TH
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import qualified Text.Blaze.Html.Renderer.Utf8 as H
 
-import Flaw.App.PlainTexture
 import Flaw.Asset
 import Flaw.Asset.Collada
 import Flaw.Asset.FolderAssetPack
 import Flaw.Asset.RemapAssetPack
 import Flaw.Build
 import Flaw.Visual.Geometry
+import Flaw.Visual.Texture
 
 do
 	packBuilder <- runIO $ newRemapAssetPackBuilder (FolderAssetPackBuilder "assetpack/") remapAssetWithHash
@@ -26,20 +27,20 @@ do
 	addAsset "field.bin" =<< emitGeometryAsset "assets/field.DAE" (getElementById "geom-field")
 	addAsset "beaver.bin" =<< emitGeometryAsset "assets/beaver.DAE" (getElementById "geom-Beaver")
 	addAsset "peka.bin" =<< emitGeometryAsset "assets/peka.DAE" (getElementById "geom-peka")
-	addAsset "castle.jpg" =<< emitPlainTextureAsset "assets/images/0_castle.jpg"
-	addAsset "beaver.jpg" =<< emitPlainTextureAsset "assets/images/0_beaver.jpg"
-	addAsset "peka.png" =<< emitPlainTextureAsset "assets/images/0_peka0.png"
-	addAsset "beaver_icon.png" =<< emitPlainTextureAsset "assets/images/beaver_icon.png"
-	addAsset "peka_icon.png" =<< emitPlainTextureAsset "assets/images/peka_icon.png"
-	addAsset "beaver_win.jpg" =<< emitPlainTextureAsset "assets/images/beaver_win.jpg"
-	addAsset "peka_win.jpg" =<< emitPlainTextureAsset "assets/images/peka_win.jpeg"
-	addAsset "styles.css" =<< emitPlainTextureAsset "assets/styles.css"
+	addAsset "castle.jpg" =<< emitTextureAsset "assets/images/0_castle.jpg"
+	addAsset "beaver.jpg" =<< emitTextureAsset "assets/images/0_beaver.jpg"
+	addAsset "peka.png" =<< emitTextureAsset "assets/images/0_peka0.png"
+	addAsset "beaver_icon.png" =<< emitTextureAsset "assets/images/beaver_icon.png"
+	addAsset "peka_icon.png" =<< emitTextureAsset "assets/images/peka_icon.png"
+	addAsset "beaver_win.jpg" =<< emitTextureAsset "assets/images/beaver_win.jpg"
+	addAsset "peka_win.jpg" =<< emitTextureAsset "assets/images/peka_win.jpeg"
+	addAsset "styles.css" =<< BL.toStrict <$> loadFile "assets/styles.css"
 	addAsset "pekabeaver.min.js" =<< BL.toStrict <$> loadFile "pekabeaver.min.js"
 
-	packBytes <- runIO $ saveRemapAssetPackBuilder packBuilder
-	runIO $ B.writeFile "pack.bin" packBytes
+	remapAssetPackContainer <- runIO $ finalizeRemapAssetPackBuilder packBuilder
+	runIO $ B.writeFile "pack.bin" $ S.encode remapAssetPackContainer
 
-	pack <- runIO $ loadRemapAssetPack (FolderAssetPack "assetpack/") packBytes
+	let pack = loadRemapAssetPack remapAssetPackContainer (FolderAssetPack "assetpack/")
 
 	[ stylesCss, pekabeaverJs
 		, beaverIconPng, pekaIconPng

@@ -1,10 +1,8 @@
-resolver: lts-5.9
+resolver: lts-7.9
 
 packages:
 - '.'
-- location:
-    git: https://github.com/quyse/flaw.git
-    commit: 351226df5957229d981f53c8c9cf7f1666b6c3da
+- location: deps/flaw
   subdirs:
   - flaw-app
   - flaw-asset
@@ -18,6 +16,7 @@ packages:
   - flaw-font
   - flaw-game
   - flaw-gl
+  - flaw-gl-sdl
   - flaw-graphics
   - flaw-input
   - flaw-js
@@ -27,9 +26,11 @@ packages:
   - flaw-visual
   - flaw-window
   extra-dep: true
-
-extra-deps:
-- cereal-text-0.1.0.1
+# sdl2 fork without heavy dependencies
+- location:
+    git: https://github.com/quyse/sdl2.git
+    commit: cc66bf8d7bd1ca5bb01712d7a890dee647e1f351
+  extra-dep: true
 
 ghc-options:
   "*": -O3 -threaded -with-rtsopts=-N -Wall -fno-warn-unsupported-calling-conventions -fno-warn-tabs

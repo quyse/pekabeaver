@@ -6,11 +6,11 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Data.IORef
+import qualified Data.Serialize as S
 import qualified Data.Text as T
 import System.Random
 
 import Flaw.App
-import Flaw.App.PlainTexture
 import Flaw.Asset
 import Flaw.Asset.FolderAssetPack
 import Flaw.Asset.RemapAssetPack
@@ -24,6 +24,7 @@ import Flaw.Input
 import Flaw.Input.Mouse
 import Flaw.Input.Keyboard
 import Flaw.Visual.Geometry
+import Flaw.Visual.Texture
 import Flaw.Window
 
 #if defined(ghcjs_HOST_OS)
@@ -224,13 +225,10 @@ affineActorLookAt position@(Vec3 px py pz) target direction = r where
 		0 0 0 1
 
 main :: IO ()
-main = handle errorHandler $ withBook $ \bk -> do
-
-	-- init app
-	(window, device, context, presenter, inputManager) <- book bk $ initApp $ appConfig
+main = handle errorHandler $ withApp appConfig
 		{ appConfigTitle = "PEKABEAVER"
 		, appConfigNeedDepthBuffer = True
-		}
+		} $ \window device context presenter inputManager -> withBook $ \bk -> do
 
 	setWindowMouseCursor window MouseCursorHand
 	--setWindowMouseLock window True
@@ -254,7 +252,9 @@ main = handle errorHandler $ withBook $ \bk -> do
 	mouseState <- atomically initialInputState
 
 	-- load asset pack
-	assetPack <- loadRemapAssetPack (FolderAssetPack "assetpack/") =<< loadAsset (FolderAssetPack "") "pack.bin" :: IO (RemapAssetPack FolderAssetPack T.Text)
+	assetPack <- do
+		Right assetPackContainer <- S.decode <$> loadAsset (FolderAssetPack "") "pack.bin"
+		return $ loadRemapAssetPack assetPackContainer (FolderAssetPack "assetpack/") :: IO (RemapAssetPack FolderAssetPack T.Text)
 
 	-- load field
 	Geometry
@@ -262,7 +262,7 @@ main = handle errorHandler $ withBook $ \bk -> do
 		, geometryIndexBuffer = ibField
 		, geometryIndicesCount = icField
 		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "field.bin")
-	tField <- book bk $ loadPlainTextureAsset device assetPack "castle.jpg"
+	tField <- book bk $ loadTextureAsset device defaultSamplerStateInfo =<< loadAsset assetPack "castle.jpg"
 
 	-- load beaver
 	Geometry
@@ -270,7 +270,7 @@ main = handle errorHandler $ withBook $ \bk -> do
 		, geometryIndexBuffer = ibBeaver
 		, geometryIndicesCount = icBeaver
 		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "beaver.bin")
-	tBeaver <- book bk $ loadPlainTextureAsset device assetPack "beaver.jpg"
+	tBeaver <- book bk $ loadTextureAsset device defaultSamplerStateInfo =<< loadAsset assetPack "beaver.jpg"
 
 	-- load peka
 	Geometry
@@ -278,7 +278,7 @@ main = handle errorHandler $ withBook $ \bk -> do
 		, geometryIndexBuffer = ibPeka
 		, geometryIndicesCount = icPeka
 		} <- book bk (loadGeometryAsset device =<< loadAsset assetPack "peka.bin")
-	tPeka <- book bk $ loadPlainTextureAsset device assetPack "peka.png"
+	tPeka <- book bk $ loadTextureAsset device defaultSamplerStateInfo =<< loadAsset assetPack "peka.png"
 
 	let samplerState = nullSamplerState
 
@@ -331,7 +331,8 @@ main = handle errorHandler $ withBook $ \bk -> do
 			(viewProj, viewportWidth, viewportHeight) <- liftIO $ render context $ do
 				present presenter $ do
 					renderClearColor 0 (Vec4 0.5 0.5 0.5 1)
-					renderClearDepth 1
+					renderClearDepth 0
+					renderDepthTestFunc DepthTestFuncGreater
 					renderProgram program
 
 					Vec4 viewportLeft viewportTop viewportRight viewportBottom <- renderGetViewport
@@ -340,7 +341,7 @@ main = handle errorHandler $ withBook $ \bk -> do
 					let aspect = (fromIntegral viewportWidth) / (fromIntegral viewportHeight)
 
 					let view = affineLookAt cameraPosition (Vec3 0 0 0) (Vec3 0 0 1)
-					let proj = projectionPerspectiveFov (pi / 4) aspect 0.01 (50 :: Float)
+					let proj = projectionPerspectiveFov (pi / 4) aspect (-50 :: Float) (-0.01)
 					let viewProj = mul proj view
 					renderUniform usCamera uViewProj viewProj
 					renderUniform usCamera uCameraPosition cameraPosition
