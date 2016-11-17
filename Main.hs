@@ -24,7 +24,6 @@ import Flaw.Input
 import Flaw.Input.Mouse
 import Flaw.Input.Keyboard
 import Flaw.Visual.Geometry
-import Flaw.Visual.Texture
 import Flaw.Window
 
 #if defined(ghcjs_HOST_OS)
@@ -255,6 +254,8 @@ main = handle errorHandler $ withApp appConfig
 	assetPack <- do
 		Right assetPackContainer <- S.decode <$> loadAsset (FolderAssetPack "") "pack.bin"
 		return $ loadRemapAssetPack assetPackContainer (FolderAssetPack "assetpack/") :: IO (RemapAssetPack FolderAssetPack T.Text)
+
+	let loadTextureAsset = createNativeTexture
 
 	-- load field
 	Geometry

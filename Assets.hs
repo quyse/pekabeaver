@@ -18,11 +18,12 @@ import Flaw.Asset.FolderAssetPack
 import Flaw.Asset.RemapAssetPack
 import Flaw.Build
 import Flaw.Visual.Geometry
-import Flaw.Visual.Texture
 
 do
 	packBuilder <- runIO $ newRemapAssetPackBuilder (FolderAssetPackBuilder "assetpack/") remapAssetWithHash
 	let addAsset assetId asset = runIO $ putAsset packBuilder assetId asset
+
+	let emitTextureAsset = runIO . B.readFile
 
 	addAsset "field.bin" =<< emitGeometryAsset "assets/field.DAE" (getElementById "geom-field")
 	addAsset "beaver.bin" =<< emitGeometryAsset "assets/beaver.DAE" (getElementById "geom-Beaver")
